@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Palavra do Dia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;600&family=Fraunces:ital,wght@0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: um jogo de palavras comum até virar o pedido; frio e seco, nada de cartão
+IDEA: clone do Termo com número do dia secreto + palavra que se decodifica
+PICTURE: o tabuleiro; no fim, o número gigante e depois o loop do rosto dela
+COLOUR and TYPE: grafite escuro, verde/amarelo do jogo; Mitr + Fraunces
+LAYOUT: coluna única, feito pra celular na mão dela
+*/
+:root{color-scheme:dark;--bg:#121214;--ink:#f2f2f2;--muted:#8a8a91;--tile:#3a3a3f;--empty:#2a2a2e;--green:#3aa394;--yellow:#d3ad69;--gray:#312a2c;--key:#4c4347}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 "Mitr",system-ui,sans-serif;overflow:hidden;display:flex;flex-direction:column;align-items:center;user-select:none;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{width:100%;max-width:520px;display:flex;align-items:center;justify-content:center;padding:14px 16px 6px;position:relative}
+h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
+.sub{color:var(--muted);font-size:13px;text-align:center;margin-bottom:8px;min-height:18px}
+#board{display:grid;gap:6px;padding:8px;margin:auto 0}
+.row{display:grid;gap:6px}
+.tile{width:var(--t);height:var(--t);border-radius:6px;background:var(--empty);border:2px solid var(--tile);display:grid;place-items:center;font-weight:600;font-size:calc(var(--t)*.55);text-transform:uppercase}
+.tile.filled{border-color:#6b6b72;animation:pop .1s}
+.tile.green{background:var(--green);border-color:var(--green);color:#fff}
+.tile.yellow{background:var(--yellow);border-color:var(--yellow)}
+.tile.gray{background:var(--gray);border-color:var(--gray);color:#b7b0b2}
+.tile.flip{animation:flip .5s ease}
+.tile.dance{animation:dance .5s ease}
+.tile.chaos{color:#6d6567}
+.row.shake{animation:shake .4s}
+@keyframes pop{50%{transform:scale(1.1)}}
+@keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+@keyframes dance{40%{transform:translateY(-14px)}70%{transform:translateY(3px)}}
+@keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+#kb{width:100%;max-width:520px;padding:8px 6px calc(12px + env(safe-area-inset-bottom));display:grid;gap:7px}
+.kr{display:flex;gap:5px;justify-content:center}
+.k{flex:1;max-width:44px;height:56px;border:0;border-radius:6px;background:var(--key);color:var(--ink);font:600 17px "Mitr",sans-serif;cursor:pointer;display:grid;place-items:center}
+.k.wide{max-width:72px;flex:1.6;font-size:13px}
+.k.green{background:var(--green)}.k.yellow{background:var(--yellow)}.k.gray{background:#241f20;color:#6d6567}
+.k:focus-visible{outline:2px solid #fff}
+#toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#f2f2f2;color:#121214;padding:10px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#toast.on{opacity:1}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;place-items:center;padding:16px;z-index:5}
+.modal.on{display:grid}
+.card{background:#1c1c20;border-radius:14px;padding:24px 22px;width:100%;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.card h2{margin:0 0 14px;font-size:15px;color:var(--muted);font-weight:400}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:18px}
+.stats b{display:block;font-size:30px;line-height:1}
+.stats span{font-size:12px;color:var(--muted)}
+.dist{display:grid;gap:4px;margin-bottom:20px;text-align:left}
+.bar{display:flex;align-items:center;gap:6px;font-size:13px}
+.bar i{font-style:normal;background:#3a3a3f;padding:0 8px;min-width:24px;text-align:right;border-radius:3px}
+.bar i.hi{background:var(--green)}
+.next{font-size:13px;color:var(--muted)}
+#clock{font-size:34px;font-weight:600;letter-spacing:.05em;font-variant-numeric:tabular-nums}
+/* revelação do número */
+#reveal{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;z-index:8}
+#reveal.on{display:flex}
+#count{font:600 clamp(80px,28vw,190px)/1 "Mitr",sans-serif;color:var(--green);font-variant-numeric:tabular-nums;letter-spacing:.01em;opacity:0;transform:scale(.6);transition:opacity .5s,transform .6s cubic-bezier(.2,.8,.25,1)}
+#count.on{opacity:1;transform:none}
+#rlabel{margin-top:4px;font-size:13px;color:var(--muted);letter-spacing:.42em;text-transform:uppercase;opacity:0;transition:opacity .7s}
+.rblock{margin-top:30px;display:grid;gap:14px;max-width:18em}
+.rline{font:400 clamp(18px,5.2vw,25px)/1.4 "Fraunces",serif;color:var(--ink);opacity:0;transform:translateY(10px);transition:opacity 1.1s,transform 1.1s}
+.rline.on{opacity:1;transform:none}
+/* portão (ele toca antes de entregar) + loop da reação */
+.full{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;z-index:10}
+.full.on{display:flex}
+#gate h3{font:400 16px "Mitr",sans-serif;color:var(--muted);margin:0 0 22px;max-width:16em;line-height:1.5}
+#gate button{font:600 20px "Mitr",sans-serif;border:0;border-radius:999px;padding:16px 40px;min-height:52px;background:var(--green);color:#fff;cursor:pointer}
+#gatehint{margin-top:18px;font-size:12px;color:#55555c;max-width:18em}
+#loopvid{width:100%;max-width:360px;aspect-ratio:3/4;object-fit:cover;border-radius:16px;background:#000;transform:scaleX(-1)}
+#loopcap{font:italic 400 clamp(18px,5vw,24px)/1.3 "Fraunces",serif;margin:18px 0 20px}
+.saves{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.saves a{display:none;font:600 14px "Mitr",sans-serif;text-decoration:none;border:1px solid var(--tile);color:var(--ink);border-radius:999px;padding:11px 20px;min-height:44px;display:none;align-items:center}
+@media (prefers-reduced-motion:reduce){.tile.flip,.tile.dance{animation:none}#count,.rline{transition:opacity .4s}}
+</style>
+</head>
+<body>
+<header><h1 id="title">PALAVRA</h1></header>
+<div class="sub" id="sub">Nº <span id="num">—</span> · adivinhe em 6 tentativas</div>
+<div id="board"></div>
+<div id="kb"></div>
+<div id="toast"></div>
+
+<div class="modal" id="stats"><div class="card">
+  <h2>Estatísticas</h2>
+  <div class="stats">
+    <div><b>1</b><span>jogos</span></div>
+    <div><b id="pct">100</b><span>% vitórias</span></div>
+    <div><b id="seq">1</b><span>sequência</span></div>
+    <div><b id="best">1</b><span>melhor</span></div>
+  </div>
+  <div class="dist" id="dist"></div>
+  <div class="next">palavra bônus liberada em</div>
+  <div id="clock">00:00:15</div>
+</div></div>
+
+<div id="reveal">
+  <div id="count">0</div>
+  <div id="rlabel">dias</div>
+  <div class="rblock">
+    <div class="rline" id="l1"></div>
+    <div class="rline" id="l2"></div>
+    <div class="rline" id="l3"></div>
+  </div>
+</div>
+
+<div class="full" id="gate">
+  <h3>Antes de entregar o celular pra ela: toque abaixo e permita a câmera. Depois é só passar o jogo pra ela jogar.</h3>
+  <button id="gatebtn">▶ começar</button>
+  <div id="gatehint">a gravação começa agora e fica escondida. não precisa gravar a tela do celular: o vídeo final já junta o jogo e o rosto dela lado a lado.</div>
+</div>
+
+<div class="full" id="loop">
+  <video id="loopvid" playsinline muted loop autoplay></video>
+  <div id="loopcap">e essa foi a sua cara 🥹</div>
+  <div class="saves">
+    <a id="saveReac" download="reacao.webm">salvar a reação</a>
+    <a id="saveFull" download="pedido-completo.webm">salvar vídeo completo</a>
+  </div>
+</div>
+
+<script>
+{
+// ===================== CONFIGURAÇÃO =====================
+const CONFIG = {
+  palavra: "PRAIA",          // palavra que ela adivinha (5 letras, sem acento)
+  nome: "Leticia",
+  contagem: 15,              // segundos da contagem antes do bônus
+  bonus: ["VOCÊ","QUER","NAMORAR","COMIGO?"],
+  metISO: "2026-06-24",      // dia em que vocês se conheceram (AAAA-MM-DD)
+  rev1: "não é o número do jogo.",
+  rev2: "são os dias desde 24 de junho — o dia em que te conheci.",
+  rev3: "cinco meses exatos, hoje. contei todos.",
+  cue:  "(pode levantar o olho agora)",
+  chaosMs: 2800,             // tempo de caos ilegível antes de travar
+  lockStep: 230,             // intervalo entre cada quadrado travar em verde
+  loopDelay: 9000,           // espera depois do pedido antes de mostrar o loop
+  gravar: true               // true = tenta gravar a câmera (só em HTTPS/GitHub Pages)
+};
+// ?teste no fim do link pula direto pra contagem (sem câmera), pra testar.
+// ========================================================
+
+const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase();
+const WORD = norm(CONFIG.palavra), N = WORD.length, ROWS = 6;
+const GLY = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#@%&?".split("");
+const $ = id => document.getElementById(id);
+const board = $("board"), kb = $("kb");
+let row = 0, col = 0, grid = [], done = false, busy = false;
+const keyState = {};
+
+function sizeTiles(cols, rows){
+  const w = Math.min(window.innerWidth, 520) - 40;
+  const h = window.innerHeight - 330;
+  const t = Math.floor(Math.max(34, Math.min(62, (w - (cols-1)*6)/cols, (h - (rows-1)*6)/rows)));
+  board.style.setProperty("--t", t+"px");
+}
+function buildBoard(){
+  sizeTiles(N, ROWS);
+  board.innerHTML = Array.from({length:ROWS},()=>`<div class="row" style="grid-template-columns:repeat(${N},auto)">${'<div class="tile"></div>'.repeat(N)}</div>`).join("");
+  grid = [...board.children].map(r => [...r.children]);
+}
+const LAYOUT = ["QWERTYUIOP","ASDFGHJKL","⌫ZXCVBNM↵"];
+function buildKb(){
+  kb.innerHTML = LAYOUT.map(r => `<div class="kr">${[...r].map(c=>{
+    if(c==="↵") return `<button class="k wide" data-k="ENTER">ENTER</button>`;
+    if(c==="⌫") return `<button class="k wide" data-k="BACK" aria-label="apagar">⌫</button>`;
+    return `<button class="k" data-k="${c}">${c}</button>`;
+  }).join("")}</div>`).join("");
+}
+function toast(msg, ms=1400){
+  const t = $("toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toast.h); toast.h = setTimeout(()=>t.classList.remove("on"), ms);
+}
+function press(k){
+  if(done || busy) return;
+  if(k==="ENTER") return submit();
+  if(k==="BACK"){ if(col>0){ col--; const t=grid[row][col]; t.textContent=""; t.classList.remove("filled"); } return; }
+  if(/^[A-Z]$/.test(k) && col<N){ const t=grid[row][col]; t.textContent=k; t.classList.add("filled"); col++; }
+}
+function score(guess){
+  const res = Array(N).fill("gray"), left = {};
+  for(let i=0;i<N;i++){ if(guess[i]===WORD[i]) res[i]="green"; else left[WORD[i]]=(left[WORD[i]]||0)+1; }
+  for(let i=0;i<N;i++){ if(res[i]!=="green" && left[guess[i]]){ res[i]="yellow"; left[guess[i]]--; } }
+  return res;
+}
+const RANK = {gray:1,yellow:2,green:3};
+function paintKey(ch, st){
+  if((RANK[keyState[ch]]||0) >= RANK[st]) return;
+  keyState[ch] = st;
+  const b = kb.querySelector(`[data-k="${ch}"]`); if(b){ b.classList.remove("gray","yellow","green"); b.classList.add(st); }
+}
+function submit(){
+  if(col<N){ board.children[row].classList.add("shake"); setTimeout(()=>board.children[row].classList.remove("shake"),400); toast("Letras insuficientes"); return; }
+  const guess = grid[row].map(t=>t.textContent).join("");
+  const res = score(guess); busy = true;
+  grid[row].forEach((t,i)=>{
+    setTimeout(()=>{ t.classList.add("flip"); setTimeout(()=>{ t.classList.add(res[i]); paintKey(guess[i],res[i]); },250); }, i*280);
+  });
+  const end = N*280 + 350;
+  setTimeout(()=>{
+    busy = false;
+    if(guess===WORD){
+      done = true;
+      toast(["Genial!","Magnífico!","Impressionante!","Extraordinário!","Fenomenal!","Ufa!"][row], 1800);
+      grid[row].forEach((t,i)=>setTimeout(()=>t.classList.add("dance"), i*100));
+      setTimeout(()=>showStats(true), 2200);
+    } else if(row===ROWS-1){
+      done = true; toast(WORD, 2500); setTimeout(()=>showStats(false), 2600);
+    } else { row++; col=0; }
+  }, end);
+}
+function showStats(win){
+  $("pct").textContent = win ? 100 : 0;
+  $("seq").textContent = win ? 1 : 0;
+  $("best").textContent = win ? 1 : 0;
+  $("dist").innerHTML = [1,2,3,4,5,6].map(n=>{
+    const hit = win && n===row+1;
+    return `<div class="bar">${n}<i class="${hit?'hi':''}" style="width:${hit?100:8}%">${hit?1:0}</i></div>`;
+  }).join("");
+  $("stats").classList.add("on");
+  let s = CONFIG.contagem;
+  const fmt = v => "00:00:" + String(v).padStart(2,"0");
+  $("clock").textContent = fmt(s);
+  const iv = setInterval(()=>{
+    s--; $("clock").textContent = fmt(Math.max(s,0));
+    if(s<=0){ clearInterval(iv); setTimeout(showNumber, 600); }
+  }, 1000);
+}
+
+// ---------- revelação do número ----------
+function daysSince(iso){
+  const p = iso.split("-").map(Number);
+  const start = new Date(p[0], p[1]-1, p[2]);
+  const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((today - start)/86400000));
+}
+const DAYS = daysSince(CONFIG.metISO);
+$("num").textContent = DAYS;
+
+function showNumber(){
+  $("stats").classList.remove("on");
+  startClipB();                 // começa a gravar a reação a partir daqui
+  const cEl = $("count");
+  $("reveal").classList.add("on");
+  setTimeout(()=>{
+    cEl.classList.add("on");
+    let t0 = null; const dur = 2400;
+    const step = ts => {
+      if(!t0) t0 = ts;
+      const p = Math.min((ts - t0)/dur, 1), e = 1 - Math.pow(1-p, 3);
+      cEl.textContent = Math.round(e * DAYS);
+      if(p < 1) requestAnimationFrame(step);
+      else { cEl.textContent = DAYS; $("rlabel").style.opacity = 1; lines(); }
+    };
+    requestAnimationFrame(step);
+  }, 600);
+  function lines(){
+    [["l1",CONFIG.rev1,900],["l2",CONFIG.rev2,2700],["l3",CONFIG.rev3,5200]]
+      .forEach(a => setTimeout(()=>{ $(a[0]).textContent = a[1]; $(a[0]).classList.add("on"); }, a[2]));
+    setTimeout(startProposal, 8200);
+  }
+}
+
+// ---------- a palavra bônus: caos ilegível -> trava em verde fora de ordem ----------
+function startProposal(){
+  const rv = $("reveal");
+  rv.style.transition = "opacity 1s"; rv.style.opacity = 0;
+  setTimeout(()=>{ rv.classList.remove("on"); rv.style.opacity = ""; rv.style.transition = ""; }, 1000);
+  kb.style.transition = "opacity .6s"; kb.style.opacity = 0;
+  $("title").textContent = "PALAVRA BÔNUS";
+  $("sub").textContent = "esta é especial…";
+  const words = CONFIG.bonus.map(w => [...w.toUpperCase()]);
+  const maxLen = Math.max(...words.map(w => w.length));
+  sizeTiles(maxLen, words.length);
+  board.style.justifyItems = "center";
+  board.innerHTML = words.map(w => `<div class="row" style="grid-template-columns:repeat(${w.length},auto)">${'<div class="tile"></div>'.repeat(w.length)}</div>`).join("");
+  const rowsEl = [...board.children].map(r => [...r.children]);
+  const flat = [];
+  rowsEl.forEach((tiles, ri) => tiles.forEach((el, ci) => flat.push({ el, char: words[ri][ci] })));
+  const timers = new Map();
+  const rnd = () => GLY[Math.floor(Math.random()*GLY.length)];
+
+  // 1) CAOS: cada quadrado pisca símbolos aleatórios, ilegível
+  setTimeout(()=>{
+    flat.forEach(f=>{
+      f.el.classList.add("filled","chaos");
+      f.el.textContent = rnd();
+      const id = setInterval(()=>{ f.el.textContent = rnd(); }, 60 + Math.random()*70);
+      timers.set(f.el, id);
+    });
+    setTimeout(lock, CONFIG.chaosMs);
+  }, 1100);
+
+  // 2) TRAVA: em ordem totalmente aleatória pela tela inteira
+  function lock(){
+    const order = flat.slice();
+    for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+    let k = 0;
+    const lockNext = () => {
+      if(k >= order.length){ setTimeout(endCue, 1000); return; }
+      const f = order[k++];
+      clearInterval(timers.get(f.el));
+      f.el.classList.remove("chaos");
+      f.el.classList.add("flip");
+      setTimeout(()=>{ f.el.textContent = f.char; f.el.classList.add("green"); }, 240);
+      setTimeout(lockNext, CONFIG.lockStep);
+    };
+    lockNext();
+  }
+}
+
+function endCue(){
+  const sub = $("sub");
+  sub.style.transition = "opacity .8s"; sub.style.opacity = 0;
+  setTimeout(()=>{ sub.textContent = CONFIG.cue; sub.style.color = "var(--green)"; sub.style.opacity = 1; }, 800);
+  // depois de um tempo pro "sim" acontecer, encerra e mostra o loop da reação
+  setTimeout(()=> stopAll(showLoop), CONFIG.loopDelay);
+}
+
+// ====================== GRAVAÇÃO ======================
+// recC = vídeo completo: a tela do jogo (redesenhada num canvas) à esquerda + câmera frontal à direita, com áudio.
+// recB = só a câmera, a partir da revelação do número (vira o loop da reação).
+let camStream=null, camVid=null, recB=null, recC=null, chunksB=[], chunksC=[], recType="video/webm", drawing=false;
+function pickMime(){
+  const c=["video/mp4;codecs=avc1,mp4a","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm","video/mp4"];
+  if(window.MediaRecorder && MediaRecorder.isTypeSupported)
+    for(const m of c){ if(MediaRecorder.isTypeSupported(m)) return m; }
+  return "";
+}
+const EXT = () => recType.includes("mp4") ? "mp4" : "webm";
+function newRec(stream, chunks){
+  const m = pickMime();
+  const r = new MediaRecorder(stream, m ? { mimeType:m } : undefined);
+  recType = r.mimeType || m || "video/webm";
+  r.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+  r.start(1000);
+  return r;
+}
+async function startCamera(){
+  if(!CONFIG.gravar || !navigator.mediaDevices || !window.MediaRecorder) return false;
+  const v = { facingMode:"user", width:{ideal:720}, height:{ideal:960} };
+  try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v, audio:true }); }
+  catch(e){ // microfone negado? grava pelo menos o vídeo
+    try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v }); }catch(e2){ camStream = null; return false; }
+  }
+  camVid = document.createElement("video");
+  camVid.muted = true; camVid.playsInline = true; camVid.setAttribute("playsinline","");
+  camVid.srcObject = camStream;
+  camVid.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none";
+  document.body.appendChild(camVid);
+  try{ await camVid.play(); }catch(e){}
+  startComposite();
+  return true;
+}
+function startClipB(){
+  if(!camStream || !window.MediaRecorder) return;
+  try{ recB = newRec(camStream, chunksB); }catch(e){ recB = null; }
+}
+
+// ---------- compositor: tela + rosto lado a lado ----------
+const CW = 1280, CH = 720, HALF = 640;
+let cv = null, cx = null, lastPaint = 0;
+function startComposite(){
+  cv = document.createElement("canvas");
+  if(!cv.captureStream){ try{ recC = newRec(camStream, chunksC); }catch(e){} return; } // sem canvas: só câmera
+  cv.width = CW; cv.height = CH; cx = cv.getContext("2d");
+  drawing = true; requestAnimationFrame(frame);
+  const out = cv.captureStream(30);
+  camStream.getAudioTracks().forEach(t => out.addTrack(t));
+  try{ recC = newRec(out, chunksC); }
+  catch(e){ try{ recC = newRec(camStream, chunksC); }catch(e2){} }
+}
+function frame(ts){
+  if(!drawing) return;
+  if(ts - lastPaint > 30){ lastPaint = ts; try{ paint(); }catch(e){} }
+  requestAnimationFrame(frame);
+}
+function rr(x,y,w,h,r){
+  cx.moveTo(x+r,y); cx.arcTo(x+w,y,x+w,y+h,r); cx.arcTo(x+w,y+h,x,y+h,r);
+  cx.arcTo(x,y+h,x,y,r); cx.arcTo(x,y,x+w,y,r); cx.closePath();
+}
+function paint(){
+  const W = innerWidth, H = innerHeight, s = Math.min(HALF/W, CH/H);
+  const ox = (HALF - W*s)/2, oy = (CH - H*s)/2;
+  cx.setTransform(1,0,0,1,0,0);
+  cx.fillStyle = "#000"; cx.fillRect(0,0,CW,CH);
+  // esquerda: a tela
+  cx.save();
+  cx.beginPath(); cx.rect(0,0,HALF,CH); cx.clip();
+  cx.setTransform(s,0,0,s,ox,oy);
+  cx.fillStyle = getComputedStyle(document.body).backgroundColor; cx.fillRect(0,0,W,H);
+  walk(document.body, 1);
+  cx.restore();
+  // direita: o rosto (espelhado, preenchendo)
+  if(camVid && camVid.videoWidth){
+    const vw = camVid.videoWidth, vh = camVid.videoHeight, sc = Math.max(HALF/vw, CH/vh);
+    cx.save();
+    cx.beginPath(); cx.rect(HALF,0,HALF,CH); cx.clip();
+    cx.translate(HALF + HALF/2, CH/2); cx.scale(-1,1);
+    cx.drawImage(camVid, -vw*sc/2, -vh*sc/2, vw*sc, vh*sc);
+    cx.restore();
+  }
+}
+const SKIP = new Set(["SCRIPT","STYLE","VIDEO","CANVAS","LINK","META"]);
+function walk(el, op){
+  if(SKIP.has(el.tagName) || el.id==="gate" || el.id==="loop") return;
+  const cs = getComputedStyle(el);
+  if(cs.display==="none" || cs.visibility==="hidden") return;
+  op *= parseFloat(cs.opacity);
+  if(op < .01) return;
+  if(el !== document.body) box(el, cs, op);
+  for(const n of el.childNodes){
+    if(n.nodeType===1) walk(n, op);
+    else if(n.nodeType===3 && n.textContent.trim()) text(n, cs, op);
+  }
+}
+function box(el, cs, op){
+  const bg = cs.backgroundColor, bw = parseFloat(cs.borderTopWidth) || 0;
+  const hasBg = bg && bg!=="transparent" && !/,\s*0\)$/.test(bg);
+  if(!hasBg && !bw) return;
+  const r = el.getBoundingClientRect(); if(r.width<1 || r.height<1) return;
+  const rad = Math.max(0, Math.min(parseFloat(cs.borderTopLeftRadius)||0, r.width/2, r.height/2));
+  cx.globalAlpha = op;
+  if(hasBg){ cx.beginPath(); rr(r.left,r.top,r.width,r.height,rad); cx.fillStyle = bg; cx.fill(); }
+  if(bw){
+    cx.beginPath(); rr(r.left+bw/2, r.top+bw/2, r.width-bw, r.height-bw, Math.max(0,rad-bw/2));
+    cx.lineWidth = bw; cx.strokeStyle = cs.borderTopColor; cx.stroke();
+  }
+  cx.globalAlpha = 1;
+}
+function wrap(str, n, maxW){
+  const words = str.split(" "), lines = []; let cur = "";
+  for(const w of words){
+    const t = cur ? cur+" "+w : w;
+    if(cur && cx.measureText(t).width > maxW+1 && lines.length < n-1){ lines.push(cur); cur = w; } else cur = t;
+  }
+  lines.push(cur); return lines;
+}
+function text(node, cs, op){
+  const range = document.createRange(); range.selectNodeContents(node);
+  const rects = [...range.getClientRects()].filter(r => r.width > 0);
+  if(!rects.length) return;
+  const el = node.parentElement, er = el.getBoundingClientRect();
+  const kx = el.offsetWidth ? er.width/el.offsetWidth : 1, ky = el.offsetHeight ? er.height/el.offsetHeight : 1;
+  if(ky < .05 || kx < .05) return;   // quadrado no meio do flip
+  cx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  if("letterSpacing" in cx) cx.letterSpacing = cs.letterSpacing==="normal" ? "0px" : cs.letterSpacing;
+  cx.fillStyle = cs.color; cx.globalAlpha = op; cx.textBaseline = "middle"; cx.textAlign = "center";
+  let str = node.textContent.replace(/\s+/g," ").trim();
+  if(cs.textTransform==="uppercase") str = str.toUpperCase();
+  const lines = rects.length===1 ? [str] : wrap(str, rects.length, Math.max(...rects.map(r=>r.width))/kx);
+  rects.forEach((r,i) => {
+    if(!lines[i]) return;
+    cx.save(); cx.translate(r.left + r.width/2, r.top + r.height/2); cx.scale(kx, ky);
+    cx.fillText(lines[i], 0, 0); cx.restore();
+  });
+  cx.globalAlpha = 1;
+}
+
+function stopAll(cb){
+  let pending = 0;
+  const fin = () => {
+    if(--pending > 0) return;
+    drawing = false;
+    if(camStream) try{ camStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    cb();
+  };
+  [recB, recC].forEach(r => { if(r && r.state !== "inactive"){ pending++; r.onstop = fin; try{ r.stop(); }catch(e){ pending--; } } });
+  if(pending === 0){ pending = 1; fin(); }
+}
+function showLoop(){
+  if(!chunksB.length && !chunksC.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
+  const lp = $("loop");
+  if(chunksB.length){
+    const url = URL.createObjectURL(new Blob(chunksB, { type:recType }));
+    const v = $("loopvid"); v.src = url; v.play().catch(()=>{});
+    const b = $("saveReac"); b.href = url; b.download = "reacao." + EXT(); b.style.display = "inline-flex";
+  }
+  if(chunksC.length){
+    const a = $("saveFull"); a.href = URL.createObjectURL(new Blob(chunksC, { type:recType }));
+    a.download = "pedido-tela-e-rosto." + EXT(); a.style.display = "inline-flex";
+  }
+  lp.classList.add("on");
+}
+
+// ====================== EVENTOS / INÍCIO ======================
+kb.addEventListener("click", e=>{ const b=e.target.closest("[data-k]"); if(b){ press(b.dataset.k); b.blur(); } });
+document.addEventListener("keydown", e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.key==="Enter"){ e.preventDefault(); press("ENTER"); }
+  else if(e.key==="Backspace") press("BACK");
+  else { const k = norm(e.key); if(/^[A-Z]$/.test(k)) press(k); }
+});
+window.addEventListener("resize", ()=>{ if(!done) sizeTiles(N, ROWS); });
+
+buildBoard(); buildKb();
+
+const TESTE = location.search.includes("teste") || location.hash==="#teste";
+const ENSAIO = location.search.includes("ensaio");
+if(TESTE){ done = true; showStats(true); }
+else {
+  // portão: ELE toca "começar", libera a câmera, e só então entrega o celular
+  $("gate").classList.add("on");
+  $("gatebtn").addEventListener("click", async ()=>{
+    await startCamera();
+    $("gate").classList.remove("on");
+    if(ENSAIO){ done = true; showStats(true); } // ?ensaio = testa a gravação pulando o jogo
+  }, { once:true });
+}
+}
+</script>
+</body>
+</html>
