@@ -56,6 +56,11 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 .bar i{font-style:normal;background:#3a3a3f;padding:0 8px;min-width:24px;text-align:right;border-radius:3px}
 .bar i.hi{background:var(--green)}
 .next{font-size:13px;color:var(--muted)}
+.hintbar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;font-size:14px;margin-top:-2px}
+.hint{background:#1f1f23;border:1px solid var(--tile);border-radius:999px;padding:4px 12px;color:var(--yellow)}
+#hint2{display:none}
+#timer{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink);min-width:3.2em;text-align:center}
+#timer.low{color:#e36a6a;animation:pop .5s infinite}
 #clock{font-size:34px;font-weight:600;letter-spacing:.05em;font-variant-numeric:tabular-nums}
 /* revelação do número */
 #reveal{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;z-index:8}
@@ -82,6 +87,7 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 <body>
 <header><h1 id="title">PALAVRA</h1></header>
 <div class="sub" id="sub">Nº <span id="num">—</span> · adivinhe em 6 tentativas</div>
+<div class="hintbar" id="hintbar"><span class="hint" id="hint1"></span><span class="hint" id="hint2"></span><span id="timer"></span></div>
 <div id="board"></div>
 <div id="kb"></div>
 <div id="toast"></div>
@@ -131,6 +137,10 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 const CONFIG = {
   palavra: "PRAIA",          // palavra que ela adivinha (5 letras, sem acento)
   nome: "Leticia",
+  dica: "verão ☀️",           // dica que aparece em cima do tabuleiro
+  tempo: 150,                // segundos pra adivinhar (2:30); começa na 1ª letra que ela digitar
+  dicaExtra: "começa com P", // segunda dica...
+  dicaExtraEm: 60,           // ...aparece quando faltar esse tanto de segundos
   contagem: 15,              // segundos da contagem antes do bônus
   bonus: ["VOCÊ","QUER","NAMORAR","COMIGO?"],
   metISO: "2026-06-24",      // dia em que vocês se conheceram (AAAA-MM-DD)
@@ -156,7 +166,7 @@ const keyState = {};
 
 function sizeTiles(cols, rows){
   const w = Math.min(window.innerWidth, 520) - 40;
-  const h = window.innerHeight - 330;
+  const h = window.innerHeight - 365;
   const t = Math.floor(Math.max(34, Math.min(62, (w - (cols-1)*6)/cols, (h - (rows-1)*6)/rows)));
   board.style.setProperty("--t", t+"px");
 }
@@ -177,8 +187,33 @@ function toast(msg, ms=1400){
   const t = $("toast"); t.textContent = msg; t.classList.add("on");
   clearTimeout(toast.h); toast.h = setTimeout(()=>t.classList.remove("on"), ms);
 }
+let left = CONFIG.tempo, timerIv = null;
+const mmss = v => Math.floor(v/60) + ":" + String(v%60).padStart(2,"0");
+function initHints(){
+  $("hint1").textContent = "dica: " + CONFIG.dica;
+  $("hint2").textContent = CONFIG.dicaExtra;
+  $("timer").textContent = "⏱ " + mmss(left);
+}
+function startTimer(){
+  if(timerIv || done) return;
+  timerIv = setInterval(()=>{
+    if(done){ stopTimer(); return; }
+    if(left > 0) left--;
+    $("timer").textContent = "⏱ " + mmss(left);
+    if(left === CONFIG.dicaExtraEm){ $("hint2").style.display = "inline"; toast("Dica extra: " + CONFIG.dicaExtra, 2000); }
+    $("timer").classList.toggle("low", left <= 15);
+    if(left <= 0 && !busy) timeUp();   // se uma linha estiver virando, espera ela terminar
+  }, 1000);
+}
+function stopTimer(){ clearInterval(timerIv); $("timer").classList.remove("low"); }
+function timeUp(){
+  done = true; stopTimer();
+  toast("Tempo esgotado! Era " + WORD, 2600);
+  setTimeout(()=>showStats(false), 2800);
+}
 function press(k){
   if(done || busy) return;
+  startTimer();
   if(k==="ENTER") return submit();
   if(k==="BACK"){ if(col>0){ col--; const t=grid[row][col]; t.textContent=""; t.classList.remove("filled"); } return; }
   if(/^[A-Z]$/.test(k) && col<N){ const t=grid[row][col]; t.textContent=k; t.classList.add("filled"); col++; }
@@ -206,12 +241,12 @@ function submit(){
   setTimeout(()=>{
     busy = false;
     if(guess===WORD){
-      done = true;
+      done = true; stopTimer();
       toast(["Genial!","Magnífico!","Impressionante!","Extraordinário!","Fenomenal!","Ufa!"][row], 1800);
       grid[row].forEach((t,i)=>setTimeout(()=>t.classList.add("dance"), i*100));
       setTimeout(()=>showStats(true), 2200);
     } else if(row===ROWS-1){
-      done = true; toast(WORD, 2500); setTimeout(()=>showStats(false), 2600);
+      done = true; stopTimer(); toast(WORD, 2500); setTimeout(()=>showStats(false), 2600);
     } else { row++; col=0; }
   }, end);
 }
@@ -274,6 +309,7 @@ function startProposal(){
   setTimeout(()=>{ rv.classList.remove("on"); rv.style.opacity = ""; rv.style.transition = ""; }, 1000);
   kb.style.transition = "opacity .6s"; kb.style.opacity = 0;
   $("title").textContent = "PALAVRA BÔNUS";
+  $("hintbar").style.display = "none";
   $("sub").textContent = "esta é especial…";
   const words = CONFIG.bonus.map(w => [...w.toUpperCase()]);
   const maxLen = Math.max(...words.map(w => w.length));
@@ -551,7 +587,7 @@ document.addEventListener("keydown", e=>{
 });
 window.addEventListener("resize", ()=>{ if(!done) sizeTiles(N, ROWS); });
 
-buildBoard(); buildKb();
+buildBoard(); buildKb(); initHints();
 
 const TESTE = location.search.includes("teste") || location.hash==="#teste";
 const ENSAIO = location.search.includes("ensaio");
