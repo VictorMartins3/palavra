@@ -119,8 +119,9 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
   <video id="loopvid" playsinline muted loop autoplay></video>
   <div id="loopcap">e essa foi a sua cara 🥹</div>
   <div class="saves">
-    <a id="saveReac" download="reacao.webm">salvar a reação</a>
-    <a id="saveFull" download="pedido-completo.webm">salvar vídeo completo</a>
+    <a id="saveFull" download="pedido-completo">⬇ vídeo completo</a>
+    <a id="saveReac" download="reacao">⬇ só a reação</a>
+    <a id="saveIG" download="pedido-instagram-30s">⬇ Instagram (30s)</a>
   </div>
 </div>
 
@@ -323,11 +324,12 @@ function endCue(){
 }
 
 // ====================== GRAVAÇÃO ======================
-// recC = vídeo completo: a tela do jogo (redesenhada num canvas) à esquerda + câmera frontal à direita, com áudio.
-// recB = só a câmera, a partir da revelação do número (vira o loop da reação).
-let camStream=null, camVid=null, recB=null, recC=null, chunksB=[], chunksC=[], recType="video/webm", drawing=false;
+// recC = vídeo COMPLETO (do "começar" até o fim do pedido): tela à esquerda + rosto à direita, com áudio.
+// recB = só a REAÇÃO: câmera pura, da revelação do número até o fim (vira o loop).
+// recI = INSTAGRAM 9:16, 30s: rosto em cima + tela embaixo, da revelação do número em diante.
+let camStream=null, camVid=null, recB=null, recC=null, recI=null, chunksB=[], chunksC=[], chunksI=[], recType="video/webm", drawing=false;
 function pickMime(){
-  const c=["video/mp4;codecs=avc1,mp4a","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm","video/mp4"];
+  const c=["video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
   if(window.MediaRecorder && MediaRecorder.isTypeSupported)
     for(const m of c){ if(MediaRecorder.isTypeSupported(m)) return m; }
   return "";
@@ -357,56 +359,96 @@ async function startCamera(){
   startComposite();
   return true;
 }
-function startClipB(){
+
+// ---------- compositor: redesenha a tela num canvas e junta com o rosto ----------
+const LW = 1280, LH = 720, LHALF = 640;           // completo: lado a lado
+const IW = 720, IH = 1280, IFACE = 560;           // instagram: rosto em cima (560), tela embaixo (720)
+const IG_MS = 30000;
+let cxL = null, cxI = null, ops = [], bodyBg = "#121214", lastPaint = 0;
+function mkCanvas(w,h){ const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+function canvasRec(cv, chunks){
+  try{
+    const out = cv.captureStream(30);
+    camStream.getAudioTracks().forEach(t => out.addTrack(t));
+    return newRec(out, chunks);
+  }catch(e){ return null; }
+}
+function startComposite(){
+  const cv = mkCanvas(LW, LH);
+  if(!cv.captureStream){ try{ recC = newRec(camStream, chunksC); }catch(e){} return; } // sem canvas: só câmera
+  cxL = cv.getContext("2d");
+  drawing = true; requestAnimationFrame(frame);
+  recC = canvasRec(cv, chunksC);
+  if(!recC){ try{ recC = newRec(camStream, chunksC); }catch(e){} }
+}
+function startClipB(){ // chamado quando o número aparece
   if(!camStream || !window.MediaRecorder) return;
   try{ recB = newRec(camStream, chunksB); }catch(e){ recB = null; }
-}
-
-// ---------- compositor: tela + rosto lado a lado ----------
-const CW = 1280, CH = 720, HALF = 640;
-let cv = null, cx = null, lastPaint = 0;
-function startComposite(){
-  cv = document.createElement("canvas");
-  if(!cv.captureStream){ try{ recC = newRec(camStream, chunksC); }catch(e){} return; } // sem canvas: só câmera
-  cv.width = CW; cv.height = CH; cx = cv.getContext("2d");
-  drawing = true; requestAnimationFrame(frame);
-  const out = cv.captureStream(30);
-  camStream.getAudioTracks().forEach(t => out.addTrack(t));
-  try{ recC = newRec(out, chunksC); }
-  catch(e){ try{ recC = newRec(camStream, chunksC); }catch(e2){} }
+  if(drawing){
+    const cv = mkCanvas(IW, IH);
+    cxI = cv.getContext("2d");
+    snapshot(); paintI();
+    recI = canvasRec(cv, chunksI);
+    setTimeout(()=>{ if(recI && recI.state !== "inactive") try{ recI.stop(); }catch(e){} }, IG_MS);
+  }
 }
 function frame(ts){
   if(!drawing) return;
-  if(ts - lastPaint > 30){ lastPaint = ts; try{ paint(); }catch(e){} }
+  if(ts - lastPaint > 30){
+    lastPaint = ts;
+    try{
+      snapshot();
+      paintL();
+      if(cxI && recI && recI.state === "recording") paintI();
+    }catch(e){}
+  }
   requestAnimationFrame(frame);
 }
-function rr(x,y,w,h,r){
-  cx.moveTo(x+r,y); cx.arcTo(x+w,y,x+w,y+h,r); cx.arcTo(x+w,y+h,x,y+h,r);
-  cx.arcTo(x,y+h,x,y,r); cx.arcTo(x,y,x+w,y,r); cx.closePath();
+function rr(c,x,y,w,h,r){
+  c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
 }
-function paint(){
-  const W = innerWidth, H = innerHeight, s = Math.min(HALF/W, CH/H);
-  const ox = (HALF - W*s)/2, oy = (CH - H*s)/2;
-  cx.setTransform(1,0,0,1,0,0);
-  cx.fillStyle = "#000"; cx.fillRect(0,0,CW,CH);
-  // esquerda: a tela
-  cx.save();
-  cx.beginPath(); cx.rect(0,0,HALF,CH); cx.clip();
-  cx.setTransform(s,0,0,s,ox,oy);
-  cx.fillStyle = getComputedStyle(document.body).backgroundColor; cx.fillRect(0,0,W,H);
-  walk(document.body, 1);
-  cx.restore();
-  // direita: o rosto (espelhado, preenchendo)
-  if(camVid && camVid.videoWidth){
-    const vw = camVid.videoWidth, vh = camVid.videoHeight, sc = Math.max(HALF/vw, CH/vh);
-    cx.save();
-    cx.beginPath(); cx.rect(HALF,0,HALF,CH); cx.clip();
-    cx.translate(HALF + HALF/2, CH/2); cx.scale(-1,1);
-    cx.drawImage(camVid, -vw*sc/2, -vh*sc/2, vw*sc, vh*sc);
-    cx.restore();
-  }
+function drawScreen(c, x, y, w, h, s, ox, oy){
+  c.save();
+  c.beginPath(); c.rect(x,y,w,h); c.clip();
+  c.fillStyle = bodyBg; c.fillRect(x,y,w,h);
+  c.setTransform(s,0,0,s,ox,oy);
+  for(const o of ops) (o.t==="b" ? drawBox : drawText)(c, o);
+  c.restore();
 }
+function drawFace(c, x, y, w, h){
+  if(!camVid || !camVid.videoWidth) return;
+  const vw = camVid.videoWidth, vh = camVid.videoHeight, sc = Math.max(w/vw, h/vh);
+  c.save();
+  c.beginPath(); c.rect(x,y,w,h); c.clip();
+  c.translate(x + w/2, y + h/2); c.scale(-1,1);
+  c.drawImage(camVid, -vw*sc/2, -vh*sc/2, vw*sc, vh*sc);
+  c.restore();
+}
+function paintL(){
+  const c = cxL, W = innerWidth, H = innerHeight, s = Math.min(LHALF/W, LH/H);
+  c.setTransform(1,0,0,1,0,0);
+  c.fillStyle = "#000"; c.fillRect(0,0,LW,LH);
+  drawScreen(c, 0, 0, LHALF, LH, s, (LHALF - W*s)/2, (LH - H*s)/2);
+  drawFace(c, LHALF, 0, LHALF, LH);
+}
+function paintI(){
+  // na revelação e no pedido o teclado some, então mostra só a parte de cima da tela (onde está tudo), maior
+  const c = cxI, W = innerWidth, H = innerHeight, area = IH - IFACE;
+  const Hw = Math.min(H, 660), s = Math.min(IW/W, area/Hw);
+  c.setTransform(1,0,0,1,0,0);
+  c.fillStyle = bodyBg; c.fillRect(0,0,IW,IH);
+  drawFace(c, 0, 0, IW, IFACE);
+  drawScreen(c, 0, IFACE, IW, area, s, (IW - W*s)/2, IFACE + (area - Hw*s)/2);
+  c.fillStyle = "rgba(255,255,255,.12)"; c.fillRect(0, IFACE, IW, 2);
+}
+
+// lê a página e monta a lista do que desenhar (uma vez por frame, usada nos dois vídeos)
 const SKIP = new Set(["SCRIPT","STYLE","VIDEO","CANVAS","LINK","META"]);
+function snapshot(){
+  ops = []; bodyBg = getComputedStyle(document.body).backgroundColor;
+  walk(document.body, 1);
+}
 function walk(el, op){
   if(SKIP.has(el.tagName) || el.id==="gate" || el.id==="loop") return;
   const cs = getComputedStyle(el);
@@ -425,19 +467,22 @@ function box(el, cs, op){
   if(!hasBg && !bw) return;
   const r = el.getBoundingClientRect(); if(r.width<1 || r.height<1) return;
   const rad = Math.max(0, Math.min(parseFloat(cs.borderTopLeftRadius)||0, r.width/2, r.height/2));
-  cx.globalAlpha = op;
-  if(hasBg){ cx.beginPath(); rr(r.left,r.top,r.width,r.height,rad); cx.fillStyle = bg; cx.fill(); }
-  if(bw){
-    cx.beginPath(); rr(r.left+bw/2, r.top+bw/2, r.width-bw, r.height-bw, Math.max(0,rad-bw/2));
-    cx.lineWidth = bw; cx.strokeStyle = cs.borderTopColor; cx.stroke();
+  ops.push({ t:"b", x:r.left, y:r.top, w:r.width, h:r.height, rad, bg: hasBg ? bg : null, bw, bc: cs.borderTopColor, op });
+}
+function drawBox(c, o){
+  c.globalAlpha = o.op;
+  if(o.bg){ c.beginPath(); rr(c,o.x,o.y,o.w,o.h,o.rad); c.fillStyle = o.bg; c.fill(); }
+  if(o.bw){
+    c.beginPath(); rr(c, o.x+o.bw/2, o.y+o.bw/2, o.w-o.bw, o.h-o.bw, Math.max(0,o.rad-o.bw/2));
+    c.lineWidth = o.bw; c.strokeStyle = o.bc; c.stroke();
   }
-  cx.globalAlpha = 1;
+  c.globalAlpha = 1;
 }
 function wrap(str, n, maxW){
   const words = str.split(" "), lines = []; let cur = "";
   for(const w of words){
     const t = cur ? cur+" "+w : w;
-    if(cur && cx.measureText(t).width > maxW+1 && lines.length < n-1){ lines.push(cur); cur = w; } else cur = t;
+    if(cur && cxL.measureText(t).width > maxW+1 && lines.length < n-1){ lines.push(cur); cur = w; } else cur = t;
   }
   lines.push(cur); return lines;
 }
@@ -448,18 +493,26 @@ function text(node, cs, op){
   const el = node.parentElement, er = el.getBoundingClientRect();
   const kx = el.offsetWidth ? er.width/el.offsetWidth : 1, ky = el.offsetHeight ? er.height/el.offsetHeight : 1;
   if(ky < .05 || kx < .05) return;   // quadrado no meio do flip
-  cx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-  if("letterSpacing" in cx) cx.letterSpacing = cs.letterSpacing==="normal" ? "0px" : cs.letterSpacing;
-  cx.fillStyle = cs.color; cx.globalAlpha = op; cx.textBaseline = "middle"; cx.textAlign = "center";
+  const font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const ls = cs.letterSpacing==="normal" ? "0px" : cs.letterSpacing;
   let str = node.textContent.replace(/\s+/g," ").trim();
   if(cs.textTransform==="uppercase") str = str.toUpperCase();
-  const lines = rects.length===1 ? [str] : wrap(str, rects.length, Math.max(...rects.map(r=>r.width))/kx);
-  rects.forEach((r,i) => {
-    if(!lines[i]) return;
-    cx.save(); cx.translate(r.left + r.width/2, r.top + r.height/2); cx.scale(kx, ky);
-    cx.fillText(lines[i], 0, 0); cx.restore();
-  });
-  cx.globalAlpha = 1;
+  let lines = [str];
+  if(rects.length > 1){
+    cxL.font = font; if("letterSpacing" in cxL) cxL.letterSpacing = ls;
+    lines = wrap(str, rects.length, Math.max(...rects.map(r=>r.width))/kx);
+  }
+  ops.push({ t:"x", font, ls, color: cs.color, op, kx, ky,
+    lines: rects.map((r,i) => ({ x: r.left + r.width/2, y: r.top + r.height/2, s: lines[i] || "" })) });
+}
+function drawText(c, o){
+  c.font = o.font; if("letterSpacing" in c) c.letterSpacing = o.ls;
+  c.fillStyle = o.color; c.globalAlpha = o.op; c.textBaseline = "middle"; c.textAlign = "center";
+  for(const l of o.lines){
+    if(!l.s) continue;
+    c.save(); c.translate(l.x, l.y); c.scale(o.kx, o.ky); c.fillText(l.s, 0, 0); c.restore();
+  }
+  c.globalAlpha = 1;
 }
 
 function stopAll(cb){
@@ -470,22 +523,22 @@ function stopAll(cb){
     if(camStream) try{ camStream.getTracks().forEach(t=>t.stop()); }catch(e){}
     cb();
   };
-  [recB, recC].forEach(r => { if(r && r.state !== "inactive"){ pending++; r.onstop = fin; try{ r.stop(); }catch(e){ pending--; } } });
+  [recB, recC, recI].forEach(r => { if(r && r.state !== "inactive"){ pending++; r.onstop = fin; try{ r.stop(); }catch(e){ pending--; } } });
   if(pending === 0){ pending = 1; fin(); }
+}
+function setSave(id, chunks, name){
+  if(!chunks.length) return null;
+  const url = URL.createObjectURL(new Blob(chunks, { type:recType }));
+  const a = $(id); a.href = url; a.download = name + "." + EXT(); a.style.display = "inline-flex";
+  return url;
 }
 function showLoop(){
   if(!chunksB.length && !chunksC.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
-  const lp = $("loop");
-  if(chunksB.length){
-    const url = URL.createObjectURL(new Blob(chunksB, { type:recType }));
-    const v = $("loopvid"); v.src = url; v.play().catch(()=>{});
-    const b = $("saveReac"); b.href = url; b.download = "reacao." + EXT(); b.style.display = "inline-flex";
-  }
-  if(chunksC.length){
-    const a = $("saveFull"); a.href = URL.createObjectURL(new Blob(chunksC, { type:recType }));
-    a.download = "pedido-tela-e-rosto." + EXT(); a.style.display = "inline-flex";
-  }
-  lp.classList.add("on");
+  const reac = setSave("saveReac", chunksB, "reacao");
+  setSave("saveFull", chunksC, "pedido-completo");
+  setSave("saveIG", chunksI, "pedido-instagram-30s");
+  if(reac){ const v = $("loopvid"); v.src = reac; v.play().catch(()=>{}); }
+  $("loop").classList.add("on");
 }
 
 // ====================== EVENTOS / INÍCIO ======================
