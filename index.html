@@ -1082,7 +1082,7 @@ else {
     $("gate").classList.remove("on");
     keepAwake();
     try{ history.pushState(null, "", location.href); addEventListener("popstate", ()=>history.pushState(null, "", location.href)); }catch(e){}
-    if(ENSAIO){ done = true; showStats(true); } // ?ensaio = testa a gravação pulando o jogo
+    if(location.search.includes("rapido")){ done = true; showStats(true); } // ?rapido = pula o jogo (teste rápido do final); ?ensaio = jogo completo + medidor de fps
   };
   $("gatebtn").addEventListener("click", async ()=>{
     if(starting) return; starting = true;
