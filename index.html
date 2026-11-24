@@ -469,7 +469,7 @@ function newRec(stream, chunks, vbps=6000000){
   console.log("gravador:", r.mimeType || m);
   r.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
   r._t0 = performance.now(); r.addEventListener("stop", ()=>{ r._t1 = performance.now(); });
-  r.start(); // sem fatias: no iPhone, gravar em pedaços gera MP4 sem duração (vira "ao vivo")
+  r.start(1000); // em pedaços de 1s: SEM isso o Safari do iOS 26 para de gravar a imagem depois de ~15–25s (WebKit 315091). A duração é consertada depois (remux).
   return r;
 }
 async function startCamera(){
@@ -976,8 +976,12 @@ async function showLoop(){
   if(!chunksC.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
   const type = ((recC && recC.mimeType) || recType || "video/mp4").split(";")[0], ext = type.includes("mp4") ? "mp4" : "webm";
   // 1) PRIMEIRO o arquivo original da câmera: salva no celular e manda pro Drive antes de montar qualquer coisa
-  const raw = new File([new Blob(chunksC, { type })], SESSAO + " - camera-completa." + ext, { type });
+  const bruto = new Blob(chunksC, { type });
   chunksC = [];
+  // gravado em pedaços = MP4 "fragmentado" (sem duração no player): reempacota sem recomprimir (~1s, mesma qualidade)
+  let raw;
+  try{ if(ext !== "mp4") throw 0; const buf = await montar(bruto, "copy", 0, 0); raw = new File([buf], SESSAO + " - camera-completa.mp4", { type:"video/mp4" }); }
+  catch(e){ if(e) diag("reempacotar falhou: " + (e.message || e)); raw = new File([bruto], SESSAO + " - camera-completa." + ext, { type }); }
   const durS = Math.max(1, ((recC && recC._t1 || performance.now()) - recT0) / 1000);
   const rv = tRevealRel > 0 ? tRevealRel / 1000 : 0;
   const mont = ext === "mp4" ? VIDS : [];   // webm (sem MP4 no aparelho): fica só o original
