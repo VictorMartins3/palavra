@@ -179,7 +179,8 @@ const CONFIG = {
                              //    "I can tell by the look in your eyes" quando aparece "(pode levantar o olho agora)"
     volume: 0.5,
     volumeAoVivo: 0.3,       // volume da música tocando no celular (0 a 1) — baixinho pra ouvir o "sim"
-    tocarNoApp: true         // toca a música no celular (a partir das estatísticas)
+    versoes: false,          // false = não gera versões "com música" dos vídeos
+    tocarNoApp: false         // toca a música no celular (a partir das estatísticas)
   },
   drive: "https://script.google.com/macros/s/AKfycbyp_LLUbr36nZVNu4dXERsfGXmolLWCnuzo57i7aWuN53b2x0i5MAmtnE7pplzMpFysUg/exec",                 // URL do Google Apps Script (/exec). Com o script novo (ação "token") o celular envia DIRETO pro Drive; com o antigo, via script (lento). Vazio = não envia.
   gravar: true               // true = tenta gravar a câmera (só em HTTPS/GitHub Pages)
@@ -282,7 +283,7 @@ function submit(){
   }, end);
 }
 // ---------- música ao vivo no app ----------
-const bgm = new Audio(); bgm.preload = "auto"; bgm.setAttribute("playsinline", ""); bgm.src = CONFIG.musica.arquivo;
+const bgm = new Audio(); bgm.preload = "auto"; bgm.setAttribute("playsinline", ""); if(CONFIG.musica.tocarNoApp) bgm.src = CONFIG.musica.arquivo;
 let bgmReady = false, musT0 = 0, musPos0 = 0;   // quando começou a tocar e de que ponto do arquivo
 let actx = null, gainN = null;
 let graphBuilt = false;
@@ -473,21 +474,22 @@ function newRec(stream, chunks, vbps=6000000){
 }
 async function startCamera(){
   if(!CONFIG.gravar || !navigator.mediaDevices || !window.MediaRecorder) return false;
-  const v = { facingMode:"user", width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:60} };
+  const v = { facingMode:"user", width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30, max:30} };   // 30 fps estáveis (60 picotava com pouca luz/carga)
   try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v, audio:{ echoCancellation:true, noiseSuppression:false, autoGainControl:true } }); }
   catch(e){ // microfone negado? grava pelo menos o vídeo
     try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v }); }catch(e2){ camStream = null; recErr = e2.name + ": " + e2.message; return false; }
   }
   // tenta 1080p a 60 fps de verdade (se o aparelho recusar, segue com o que já tem)
   const vt = camStream.getVideoTracks()[0];
-  try{ if(vt) await vt.applyConstraints({ width:{ideal:1920}, height:{ideal:1080}, frameRate:{min:50, ideal:60} }); }catch(e){ console.log("applyConstraints:", e.name); }
+  try{ if(vt) await vt.applyConstraints({ width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30, max:30} }); }catch(e){ console.log("applyConstraints:", e.name); }
   try{ vt && console.log("câmera:", JSON.stringify(vt.getSettings())); }catch(e){}
   camVid = document.createElement("video");
   camVid.muted = true; camVid.playsInline = true; camVid.setAttribute("playsinline","");
   camVid.srcObject = camStream;
-  camVid.style.cssText = "position:fixed;left:0;top:0;width:4px;height:4px;opacity:.02;pointer-events:none";
+  camVid.style.cssText = "position:fixed;left:0;top:0;width:180px;height:240px;opacity:.01;z-index:-1;pointer-events:none";   // tamanho real: o Safari não reduz os quadros de um vídeo "visível"
   document.body.appendChild(camVid);
   try{ await camVid.play(); }catch(e){}
+  diagFps();
   startComposite();
   return true;
 }
@@ -514,23 +516,29 @@ function startComposite(){
   const cvI = mkCanvas(IW, IH); cxI = cvI.getContext("2d");
   try{ paintI(); }catch(e){}
   drawing = true; requestAnimationFrame(frame);
-  recC = canvasRec(cv, chunksC, 10000000, 60);
-  recF = canvasRec(cvI, chunksF, 10000000, 60);   // completo em formato Instagram (9:16)
+  recC = canvasRec(cv, chunksC, 12000000, 30);
+  recF = canvasRec(cvI, chunksF, 12000000, 30);   // completo em formato Instagram (9:16)
   if(!recC){ try{ recC = newRec(camStream, chunksC); }catch(e){} }
+}
+let camFrames = 0, paintFrames = 0, diagT0 = 0;
+function diagFps(){
+  diagT0 = performance.now();
+  if(camVid && camVid.requestVideoFrameCallback){ const f = () => { camFrames++; if(drawing) camVid.requestVideoFrameCallback(f); }; camVid.requestVideoFrameCallback(f); }
 }
 function startClipB(){ // chamado quando o número aparece
   if(!camStream || !window.MediaRecorder) return;
-  try{ recB = newRec(camStream, chunksB, 20000000); /* rosto puro, 60 fps */ }catch(e){ recB = null; recErr = e.name; }
+  try{ recB = newRec(camStream, chunksB, 16000000); /* rosto puro */ }catch(e){ recB = null; recErr = e.name; }
   if(drawing && cxI){
-    recI = canvasRec(cxI.canvas, chunksI, 16000000, 60); /* instagram 30s a 60 fps */
+    recI = canvasRec(cxI.canvas, chunksI, 14000000, 30); /* instagram 30s */
     setTimeout(()=>{ if(recI && recI.state !== "inactive") try{ recI.stop(); }catch(e){} }, IG_MS);
   }
 }
 function frame(ts){
   if(!drawing) return;
-  if(ts - lastPaint > 14){   // ~60 quadros por segundo
+  if(ts - lastPaint > 30){   // ~30 quadros por segundo
     lastPaint = ts;
     try{
+      paintFrames++;
       snapshot();
       paintL();
       if(cxI) paintI();
@@ -914,7 +922,7 @@ function shareBtn(btn, file, label){
 }
 function rowEl(label){
   const row = document.createElement("div"); row.className = "vrow";
-  row.innerHTML = `<span>${label}</span><a class="vbtn wait">…</a><a class="vbtn wait">🎵 preparando…</a>`;
+  row.innerHTML = `<span>${label}</span><a class="vbtn wait">…</a>` + (CONFIG.musica.versoes ? `<a class="vbtn wait">🎵 preparando…</a>` : "");
   $("saves").appendChild(row);
   return row.querySelectorAll("a");
 }
@@ -928,15 +936,18 @@ async function showLoop(){
     v.rec = r; vids.push(v);
   }
   if(!vids.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
-  savedTotal = vids.length * 2;
+  savedTotal = vids.length * (CONFIG.musica.versoes ? 2 : 1);
   for(const v of vids){
     const [b1, b2] = rowEl(v.label); v.b2 = b2;
-    const url = shareBtn(b1, v.file, "⬇ sem música");
+    const url = shareBtn(b1, v.file, CONFIG.musica.versoes ? "⬇ sem música" : "⬇ salvar");
     if(v.key === "B"){ const lv = $("loopvid"); lv.src = url; lv.play().catch(()=>{}); }
   }
+  if(ENSAIO){ const sec = (performance.now() - diagT0) / 1000, st = camStream && camStream.getVideoTracks()[0] && camStream.getVideoTracks()[0].getSettings();
+    $("loopcap").textContent = "ensaio · câmera " + (camFrames ? (camFrames/sec).toFixed(0) : "?") + " fps · desenho " + (paintFrames/sec).toFixed(0) + " fps · " + (st ? st.width + "×" + st.height + " pedido " + st.frameRate : ""); }
   $("loop").classList.add("on"); status();
   // 1) guarda tudo no celular, 2) manda pro Drive, 3) gera as versões com música (e guarda/manda também)
   for(const v of vids){ queueUpload(v.file); if(await idbPut(v.file)) savedLocal++; status(); }
+  if(!CONFIG.musica.versoes) return;
   for(const v of vids){
     if(v.file.size > 600*1024*1024){ v.b2.textContent = "🎵 grande demais"; savedTotal--; status(); continue; }   // evita estourar a memória do ffmpeg
     try{
@@ -1015,7 +1026,9 @@ else {
   $("gate").classList.add("on");
   let starting = false;
   // prontidão (só ele vê, no portão)
-  const rd = { "câmera":"…", "microfone":"…", "música":"…", "mixador":"…" };
+  const rd = { "câmera":"…", "microfone":"…" };
+  if(CONFIG.musica.tocarNoApp) rd["música"] = "…";
+  if(CONFIG.musica.versoes) rd["mixador"] = "…";
   const ready = (k, v) => { if(k) rd[k] = v; $("gateready").textContent = Object.entries(rd).map(([n,s]) => n + " " + s).join(" · "); };
   const blobOf = u => fetch(u).then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.blob(); });
   const begin = () => {
@@ -1030,13 +1043,13 @@ else {
     try{ navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(()=>{}); }catch(e){}
     ready();
     // baixa a música inteira (blob): a música ao vivo não depende mais da rede
-    const musP = blobOf(CONFIG.musica.arquivo).then(b => {
+    const musP = !CONFIG.musica.tocarNoApp ? Promise.resolve() : blobOf(CONFIG.musica.arquivo).then(b => {
       musBlob = b;
       const swap = () => { if(!musT0){ bgm.src = URL.createObjectURL(b); bgm.load(); } };   // o grafo do Web Audio continua ligado ao mesmo <audio>
       return (unlockP || Promise.resolve()).then(swap, swap);   // troca só depois do play de desbloqueio terminar
     }).then(() => ready("música","✓"), () => ready("música","✗"));
     // pré-carrega o mixador de música (ffmpeg) inteiro, pra gerar as versões com música mesmo sem internet
-    ffPre = Promise.all([blobOf("ff/ffmpeg-core.js"), blobOf("ff/ffmpeg-core.wasm")]).then(([j, w]) => {
+    if(CONFIG.musica.versoes) ffPre = Promise.all([blobOf("ff/ffmpeg-core.js"), blobOf("ff/ffmpeg-core.wasm")]).then(([j, w]) => {
       ffJsUrl = URL.createObjectURL(new Blob([j], { type:"text/javascript" }));
       ffWasm = w;
       ready("mixador","✓");
@@ -1050,7 +1063,7 @@ else {
     ready("microfone", ok && camStream && camStream.getAudioTracks().length ? "✓" : "✗");
     const gravando = ok && recC && recC.state === "recording";
     if(gravando || !CONFIG.gravar){
-      await espera; if(rd["música"] === "…") ready("música","✗");   // garante a música no celular antes de entregar (se não der, segue)
+      await espera; if(CONFIG.musica.tocarNoApp && rd["música"] === "…") ready("música","✗");   // garante a música no celular antes de entregar (se não der, segue)
       if(gravando && !camStream.getAudioTracks().length){
         $("gateerr").textContent = "⚠ gravando SEM som (microfone bloqueado). toque em jogar pra seguir assim.";
         $("gateerr").style.display = "block"; $("gatebtn").onclick = begin; return;
