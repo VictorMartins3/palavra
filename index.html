@@ -704,7 +704,7 @@ let directOk = false;    // algum pedaço já foi aceito direto pelo Drive nesta
 class DirectOff extends Error {}   // "o caminho direto não serve aqui" → usa o proxy
 function blobToB64(b){ return new Promise((ok,no)=>{ const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => no(r.error); r.readAsDataURL(b); }); }
 async function drivePost(obj){
-  const ac = new AbortController(), to = setTimeout(()=>ac.abort(), 120000);
+  const ac = new AbortController(), to = setTimeout(()=>ac.abort(), 300000);   // 5 min: uplink fraco no 4G
   let r; try{ r = await fetch(CONFIG.drive, { method:"POST", body: JSON.stringify(obj), signal: ac.signal }); } finally{ clearTimeout(to); } // text/plain: sem preflight CORS
   const j = await r.json(); if(!j.ok) throw new Error(j.error || "drive"); return j;
 }
@@ -794,16 +794,19 @@ async function driveDirect(file, onProg){
   forget(s.key);
   driveMode = "direto";
 }
-async function driveProxy(file, onProg){   // caminho antigo, sem mudanças
-  const s = await drivePost({ a:"start", name:file.name, mime:file.type || "video/mp4", size:file.size });
-  const CH = 8*1024*1024; let off = 0;
-  while(off < file.size){
-    const end = Math.min(off + CH, file.size), data = await blobToB64(file.slice(off, end));
+// espera ter internet e a página estar na frente (iOS corta conexões com a tela apagada / Safari em segundo plano)
+async function netOk(){ while(!navigator.onLine || document.hidden) await sleep(2000); }
+async function driveProxy(file, onProg){   // caminho antigo; agora continua a mesma sessão de onde parou
+  if(!file._ps){ await netOk(); file._ps = (await drivePost({ a:"start", name:file.name, mime:file.type || "video/mp4", size:file.size })).url; file._poff = 0; }
+  const CH = 8*1024*1024;
+  while(file._poff < file.size){
+    const off = file._poff, end = Math.min(off + CH, file.size), data = await blobToB64(file.slice(off, end));
     for(let tries = 1; ; tries++){
-      try{ await drivePost({ a:"chunk", url:s.url, start:off, end:end-1, total:file.size, data }); break; }
-      catch(e){ if(tries >= 5) throw e; await sleep(2500*tries); }
+      await netOk();
+      try{ await drivePost({ a:"chunk", url:file._ps, start:off, end:end-1, total:file.size, data }); break; }
+      catch(e){ if(tries >= 8) throw e; await sleep(Math.min(30000, 2500*tries)); }
     }
-    off = end; onProg && onProg(off / file.size);
+    file._poff = end; onProg && onProg(end / file.size);
   }
 }
 async function driveUpload(file, onProg){
@@ -826,9 +829,10 @@ async function uploadWorker(){
   while(upQueue.length && upWorkers <= upMax()){
     const f = upQueue.shift();
     let ok = false;
-    for(let round = 1; round <= 3 && !ok; round++){
+    for(let round = 1; round <= 8 && !ok; round++){   // não desiste fácil: espera o sinal voltar e continua
+      await netOk();
       try{ await driveUpload(f, p => { upCur[f.name] = Math.round(p*100) + "%"; status(); }); ok = true; }
-      catch(e){ console.warn("upload", f.name, e && e.message); upCur[f.name] = "erro, tentando de novo"; status(); await sleep(5000*round); }
+      catch(e){ console.warn("upload", f.name, e && e.message); upCur[f.name] = navigator.onLine ? "erro, tentando de novo" : "sem internet, esperando…"; status(); await sleep(Math.min(30000, 5000*round)); }
     }
     delete upCur[f.name]; ok ? upDone++ : upFail++;
     if(ok) try{ localStorage.setItem("up:" + f.name, "1"); }catch(e){}
@@ -1037,7 +1041,7 @@ else {
       ffWasm = w;
       ready("mixador","✓");
     }).catch(() => ready("mixador","✗"));
-    const fontsP = document.fonts ? document.fonts.ready.catch(()=>{}) : null;
+    const fontsP = document.fonts ? Promise.all(["400 16px Mitr","600 16px Mitr","600 20px Fraunces","italic 400 20px Fraunces"].map(f => document.fonts.load(f).catch(()=>{}))).then(()=>document.fonts.ready).catch(()=>{}) : null;   // baixa já as 4 fontes (a revelação usa Fraunces)
     const espera = Promise.race([Promise.all([musP, fontsP]), sleep(25000)]);   // no máximo ~25s
     keepAwake();
     let ok = false;
