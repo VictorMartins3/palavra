@@ -46,7 +46,7 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 .k:focus-visible{outline:2px solid #fff}
 .k,.tile{touch-action:manipulation;-webkit-user-select:none;-webkit-touch-callout:none}
 @media (max-height:620px){.k{height:46px}#kb{gap:5px}header{padding-top:8px}h1{font-size:26px}}
-#toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#f2f2f2;color:#121214;padding:10px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#toast{white-space:nowrap;text-align:center;position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#f2f2f2;color:#121214;padding:10px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 #toast.on{opacity:1}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;place-items:center;padding:16px;z-index:5}
 .modal.on{display:grid}
@@ -73,7 +73,7 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 #count.on{opacity:1;transform:none}
 #rlabel{margin-top:4px;font-size:13px;color:var(--muted);letter-spacing:.42em;text-transform:uppercase;opacity:0;transition:opacity .7s}
 .rblock{margin-top:30px;display:grid;gap:14px;max-width:18em}
-.rline{font:400 clamp(18px,5.2vw,25px)/1.4 "Fraunces",serif;color:var(--ink);opacity:0;transform:translateY(10px);transition:opacity 1.1s,transform 1.1s}
+.rline{text-wrap:balance;font:400 clamp(18px,5.2vw,25px)/1.4 "Fraunces",serif;color:var(--ink);opacity:0;transform:translateY(10px);transition:opacity 1.1s,transform 1.1s}
 .rline.on{opacity:1;transform:none}
 /* portão (ele toca antes de entregar) + loop da reação */
 .full{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;z-index:10}
@@ -81,6 +81,7 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 #gate h3{font:400 16px "Mitr",sans-serif;color:var(--muted);margin:0 0 22px;max-width:16em;line-height:1.5}
 #gate button{font:600 20px "Mitr",sans-serif;border:0;border-radius:999px;padding:16px 40px;min-height:52px;background:var(--green);color:#fff;cursor:pointer}
 #gatehint{margin-top:18px;font-size:12px;color:#55555c;max-width:18em}
+#gateready{margin-top:10px;font-size:11px;color:#55555c;min-height:1.3em;font-variant-numeric:tabular-nums}
 #gateerr{display:none;margin-top:16px;font-size:14px;color:#e36a6a;max-width:20em}
 #gateskip{display:none;margin-top:14px;font-size:13px;color:var(--muted);background:none;border:0;text-decoration:underline;cursor:pointer}
 #loopvid{width:100%;max-width:360px;aspect-ratio:3/4;object-fit:cover;border-radius:16px;background:#000;transform:scaleX(-1)}
@@ -135,6 +136,7 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
   <!-- ELE toca aqui e permite câmera + microfone; depois entrega o celular. Texto neutro de propósito. -->
   <h3>Palavra do dia</h3>
   <button id="gatebtn">▶ jogar</button>
+  <div id="gateready"></div>
   <div id="gatehint">permita o acesso quando o celular pedir</div>
   <div id="gateerr"></div>
   <button id="gateskip">jogar sem gravar</button>
@@ -155,7 +157,7 @@ const CONFIG = {
   nome: "Leticia",
   dica: "verão ☀️",           // dica que aparece em cima do tabuleiro
   tempo: 150,                // segundos pra adivinhar (2:30); começa na 1ª letra que ela digitar
-  dicaExtra: "começa com P", // segunda dica...
+  dicaExtra: "lugar com areia 🏖️", // segunda dica...
   dicaExtraEm: 60,           // ...aparece quando faltar esse tanto de segundos
   contagem: 15,              // segundos da contagem antes do bônus
   bonus: ["VOCÊ","QUER","NAMORAR","COMIGO?"],
@@ -167,7 +169,7 @@ const CONFIG = {
   cue:  "(pode levantar o olho agora)",
   chaosMs: 2800,             // tempo de caos ilegível antes de travar
   lockStep: 230,             // intervalo entre cada quadrado travar em verde
-  loopDelay: 9000,           // espera depois do pedido antes de mostrar o loop
+  loopDelay: 11000,          // espera depois do pedido antes de mostrar o loop
   musica: {
     arquivo: "m.m4a",        // trecho de "Lady (Hear Me Tonight)" — Modjo, do segundo 70 ao 125 da faixa
     inicioArquivo: 70,       // o arquivo começa nesse segundo da música
@@ -179,7 +181,7 @@ const CONFIG = {
     volumeAoVivo: 0.3,       // volume da música tocando no celular (0 a 1) — baixinho pra ouvir o "sim"
     tocarNoApp: true         // toca a música no celular (a partir das estatísticas)
   },
-  drive: "https://script.google.com/macros/s/AKfycbyp_LLUbr36nZVNu4dXERsfGXmolLWCnuzo57i7aWuN53b2x0i5MAmtnE7pplzMpFysUg/exec",                 // URL do Google Apps Script (/exec) pra mandar os vídeos pro Drive. Vazio = não envia.
+  drive: "https://script.google.com/macros/s/AKfycbyp_LLUbr36nZVNu4dXERsfGXmolLWCnuzo57i7aWuN53b2x0i5MAmtnE7pplzMpFysUg/exec",                 // URL do Google Apps Script (/exec). Com o script novo (ação "token") o celular envia DIRETO pro Drive; com o antigo, via script (lento). Vazio = não envia.
   gravar: true               // true = tenta gravar a câmera (só em HTTPS/GitHub Pages)
 };
 // ?teste no fim do link pula direto pra contagem (sem câmera), pra testar.
@@ -284,6 +286,7 @@ const bgm = new Audio(); bgm.preload = "auto"; bgm.setAttribute("playsinline", "
 let bgmReady = false, musT0 = 0, musPos0 = 0;   // quando começou a tocar e de que ponto do arquivo
 let actx = null, gainN = null;
 let graphBuilt = false;
+let musBlob = null, unlockP = null;   // música inteira baixada no portão (blob) + o play de desbloqueio
 function unlockMusic(){ // iPhone só deixa tocar som depois de um toque: prepara tudo sem fazer barulho
   if(bgmReady || !CONFIG.musica.tocarNoApp) return;
   if(!graphBuilt){
@@ -301,7 +304,7 @@ function unlockMusic(){ // iPhone só deixa tocar som depois de um toque: prepar
   if(musT0) return;
   bgm.muted = true;
   const p = bgm.play();
-  if(p && p.then) p.then(()=>{ bgmReady = true; if(!musT0) bgm.pause(); bgm.muted = false; }).catch(()=>{ bgm.muted = false; });
+  if(p && p.then) unlockP = p.then(()=>{ bgmReady = true; if(!musT0) bgm.pause(); bgm.muted = false; }).catch(()=>{ bgm.muted = false; });
 }
 function startMusic(){
   if(!CONFIG.musica.tocarNoApp || musT0) return;
@@ -434,7 +437,7 @@ function startProposal(){
 function endCue(){
   const sub = $("sub");
   sub.style.transition = "opacity .8s"; sub.style.opacity = 0;
-  setTimeout(()=>{ sub.textContent = CONFIG.cue; sub.style.color = "var(--green)"; sub.style.opacity = 1; }, 800);
+  setTimeout(()=>{ sub.textContent = CONFIG.cue; sub.style.color = "var(--green)"; sub.style.fontSize = "18px"; sub.style.opacity = 1; }, 800);
   // depois de um tempo pro "sim" acontecer, encerra e mostra o loop da reação
   setTimeout(()=> stopAll(showLoop), CONFIG.loopDelay);
 }
@@ -447,7 +450,8 @@ let tReveal = 0, recF=null, chunksF=[];
 const SESSAO = (()=>{ const d = new Date(), z = n => String(n).padStart(2,"0"); return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+" "+z(d.getHours())+"h"+z(d.getMinutes()); })();
 let camStream=null, camVid=null, recB=null, recC=null, recI=null, chunksB=[], chunksC=[], chunksI=[], recType="video/webm", drawing=false;
 function pickMime(){
-  const c=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+  const c=["video/mp4;codecs=avc1.640032,mp4a.40.2","video/mp4;codecs=avc1.640028,mp4a.40.2","video/mp4;codecs=avc1.4D0028,mp4a.40.2", // H.264 High/Main primeiro (melhor qualidade)
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
   if(window.MediaRecorder && MediaRecorder.isTypeSupported)
     for(const m of c){ if(MediaRecorder.isTypeSupported(m)) return m; }
   return "";
@@ -461,6 +465,7 @@ function newRec(stream, chunks, vbps=6000000){
   try{ r = new MediaRecorder(stream, opt); }
   catch(e){ r = new MediaRecorder(stream, m ? { mimeType:m } : undefined); } // alguns aparelhos recusam bitrate
   recType = r.mimeType || m || "video/webm";
+  console.log("gravador:", r.mimeType || m);
   r.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
   r._t0 = performance.now(); r.addEventListener("stop", ()=>{ r._t1 = performance.now(); });
   r.start(); // sem fatias: no iPhone, gravar em pedaços gera MP4 sem duração (vira "ao vivo")
@@ -473,6 +478,10 @@ async function startCamera(){
   catch(e){ // microfone negado? grava pelo menos o vídeo
     try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v }); }catch(e2){ camStream = null; recErr = e2.name + ": " + e2.message; return false; }
   }
+  // tenta 1080p a 60 fps de verdade (se o aparelho recusar, segue com o que já tem)
+  const vt = camStream.getVideoTracks()[0];
+  try{ if(vt) await vt.applyConstraints({ width:{ideal:1920}, height:{ideal:1080}, frameRate:{min:50, ideal:60} }); }catch(e){ console.log("applyConstraints:", e.name); }
+  try{ vt && console.log("câmera:", JSON.stringify(vt.getSettings())); }catch(e){}
   camVid = document.createElement("video");
   camVid.muted = true; camVid.playsInline = true; camVid.setAttribute("playsinline","");
   camVid.srcObject = camStream;
@@ -560,7 +569,7 @@ function paintL(){
 function paintI(){
   // na revelação e no pedido o teclado some, então mostra só a parte de cima da tela (onde está tudo), maior
   const c = cxI, W = innerWidth, H = innerHeight, area = IH - IFACE;
-  const Hw = done ? Math.min(H, 660) : H, s = Math.min(IW/W, area/Hw);
+  const Hw = done ? Math.min(H, 700) : H, s = Math.min(IW/W, area/Hw);
   c.setTransform(1,0,0,1,0,0);
   c.fillStyle = bodyBg; c.fillRect(0,0,IW,IH);
   drawFace(c, 0, 0, IW, IFACE);
@@ -647,6 +656,7 @@ function stopAll(cb){
     drawing = false;
     try{ camStream && camStream.getTracks().forEach(t=>t.stop()); }catch(e){}
     extraTracks.forEach(t => { try{ t.stop(); }catch(e){} });
+    try{ if(navigator.audioSession) navigator.audioSession.type = "playback"; }catch(e){}   // sem microfone: tela final no volume normal
     cb();
   };
   const fin = () => { if(--pending <= 0) finish(); };
@@ -684,13 +694,107 @@ async function idbAll(){
 }
 
 // ---------- Google Drive (via Google Apps Script do próprio usuário; ver CONFIG.drive) ----------
+// Caminho DIRETO (rápido): o script só entrega um token de acesso; o celular abre a sessão "resumable"
+// no Drive e manda o arquivo em pedaços de 16 MB direto do File (sem base64, sem passar pelo script).
+// Se o script ainda for a versão antiga (sem a ação "token") ou o envio direto falhar logo de cara,
+// cai no caminho antigo (PROXY: base64 de 8 MB via script), que continua igual.
+const DRV_API = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,size";
+let driveMode = null;    // null = ainda não sabe, "direto" ou "proxy"
+let directOk = false;    // algum pedaço já foi aceito direto pelo Drive nesta página?
+class DirectOff extends Error {}   // "o caminho direto não serve aqui" → usa o proxy
 function blobToB64(b){ return new Promise((ok,no)=>{ const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => no(r.error); r.readAsDataURL(b); }); }
 async function drivePost(obj){
   const ac = new AbortController(), to = setTimeout(()=>ac.abort(), 120000);
   let r; try{ r = await fetch(CONFIG.drive, { method:"POST", body: JSON.stringify(obj), signal: ac.signal }); } finally{ clearTimeout(to); } // text/plain: sem preflight CORS
   const j = await r.json(); if(!j.ok) throw new Error(j.error || "drive"); return j;
 }
-async function driveUpload(file, onProg){
+// fetch com tempo limite (AbortController); erro de rede/tempo vira exceção com .net = true
+async function fetchTO(url, opt, ms){
+  const ac = new AbortController(), to = setTimeout(()=>ac.abort(), ms);
+  const t0 = Date.now();
+  try{ return await fetch(url, Object.assign({}, opt, { signal: ac.signal })); }
+  catch(e){ const x = new Error("rede: " + (e && e.name || e)); x.net = true; x.fast = Date.now() - t0 < 20000 && !ac.signal.aborted; throw x; }
+  finally{ clearTimeout(to); }
+}
+// lê o "Range: bytes=0-N" da resposta 308 → próximo byte a mandar
+let rangeSeen = false;   // o navegador consegue ler o cabeçalho Range? (se o Drive não expuser, supõe pedaço inteiro gravado)
+function nextOff(r, guess){
+  const h = r.headers.get("Range"), m = /bytes=\d+-(\d+)/.exec(h || "");
+  if(m){ rangeSeen = true; return Number(m[1]) + 1; }
+  return rangeSeen ? 0 : guess;   // sem Range = nada gravado ainda
+}
+// pergunta pro Drive quanto do arquivo ele já tem (PUT vazio com "bytes */total")
+async function driveStatus(url, total, known){
+  const r = await fetchTO(url, { method:"PUT", headers:{ "Content-Range":"bytes */" + total } }, 30000);
+  directOk = true;   // deu pra ler a resposta = CORS funciona
+  if(r.status === 200 || r.status === 201) return total;
+  if(r.status === 308) return nextOff(r, known);
+  const x = new Error("status " + r.status); x.gone = r.status === 404 || r.status === 410; x.net = r.status >= 500 || r.status === 429; throw x;
+}
+// o script responde? (se sim e o Drive direto não, o problema é CORS, não a rede do celular)
+async function scriptVivo(){ try{ await drivePost({ a:"ping" }); return true; }catch(e){ return /desconhecida/.test(e.message); } }
+function forget(key){ try{ localStorage.removeItem(key); }catch(e){} }
+// abre (ou reaproveita, se a página recarregou) a sessão resumable direto do navegador, com o token do script
+async function driveSession(file){
+  const key = "upS:" + file.name + ":" + file.size;
+  try{ const u = localStorage.getItem(key); if(u) return { url:u, key, old:true }; }catch(e){}
+  let t;
+  try{ t = await drivePost({ a:"token" }); }
+  catch(e){ if(/desconhecida|TOKEN_ATE/.test(e.message)) throw new DirectOff(e.message); throw e; } // script antigo (sem "token") ou vencido
+  if(!t.token) throw new DirectOff("sem token");
+  let r;
+  try{
+    r = await fetchTO(DRV_API, { method:"POST", headers:{
+      "Authorization":"Bearer " + t.token, "Content-Type":"application/json; charset=UTF-8",
+      "X-Upload-Content-Type": file.type || "video/mp4", "X-Upload-Content-Length": String(file.size) },
+      body: JSON.stringify({ name:file.name, parents:[t.pasta] }) }, 60000);
+  }catch(e){ if(!directOk && await scriptVivo()) throw new DirectOff("CORS ao abrir sessão"); throw e; }
+  const url = r.ok && r.headers.get("Location");
+  if(!url){ if(!directOk && (r.status === 401 || r.status === 403 || r.ok)) throw new DirectOff("sessão " + r.status); throw new Error("sessão " + r.status); }
+  try{ localStorage.setItem(key, url); }catch(e){}
+  return { url, key, old:false };
+}
+async function driveDirect(file, onProg){
+  const s = await driveSession(file), total = file.size;
+  let off = 0, CH = 16*1024*1024, fails = 0, fast = 0, ask = s.old;   // 16 MB = 64 × 256 KB (o Drive exige múltiplos de 256 KB)
+  const prog = () => onProg && onProg(off / total);
+  for(;;){
+    try{
+      if(ask){ off = await driveStatus(s.url, total, off); ask = false; prog(); }   // depois de erro: exatamente até onde o Drive gravou
+      if(off >= total) break;   // o Drive já tem tudo (ex.: sessão retomada que tinha terminado)
+      const end = Math.min(off + CH, total);
+      const r = await fetchTO(s.url, { method:"PUT", headers:{ "Content-Range":"bytes " + off + "-" + (end-1) + "/" + total }, body: file.slice(off, end) }, 120000);
+      directOk = true;   // qualquer resposta legível = CORS funciona
+      if(r.status === 200 || r.status === 201){
+        let j = null; try{ j = await r.json(); }catch(e){}
+        if(j && j.size != null && Number(j.size) !== total){ forget(s.key); throw new Error("tamanho no Drive " + j.size + " ≠ " + total); }
+        off = total; prog(); break;
+      }
+      if(r.status === 308){   // pode ter gravado menos que o enviado: segue do que o Drive tem
+        const n = nextOff(r, end);
+        if(n > off){ fails = 0; off = n; prog(); continue; }
+        if(++fails >= 10) throw new Error("Drive não avança");   // 308 sem progresso: espera e pergunta de novo
+        await sleep(2000 * fails); ask = true; continue;
+      }
+      if(r.status === 404 || r.status === 410){ forget(s.key); throw new Error("sessão expirou " + r.status); }
+      if(r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429) throw new Error("drive " + r.status);
+      throw Object.assign(new Error("drive " + r.status), { net:true });   // 5xx/408/429: tenta de novo
+    }catch(e){
+      if(e instanceof DirectOff) throw e;
+      if(e.gone){ forget(s.key); throw e; }
+      if(!e.net) throw e;
+      // o Drive direto nunca respondeu nesta página, falhou rápido 2× e o script responde → CORS bloqueado: usa o proxy
+      if(!directOk && e.fast && ++fast >= 2 && await scriptVivo()){ forget(s.key); throw new DirectOff(e.message); }
+      if(++fails >= 10) throw e;                               // 10 erros seguidos sem avançar: desiste desta rodada
+      if(fails >= 3) CH = Math.max(4*1024*1024, CH / 2);       // conexão ruim: pedaços menores (continua múltiplo de 256 KB)
+      await sleep(Math.min(30000, 1000 * 2 ** Math.min(fails, 5)));
+      ask = true;
+    }
+  }
+  forget(s.key);
+  driveMode = "direto";
+}
+async function driveProxy(file, onProg){   // caminho antigo, sem mudanças
   const s = await drivePost({ a:"start", name:file.name, mime:file.type || "video/mp4", size:file.size });
   const CH = 8*1024*1024; let off = 0;
   while(off < file.size){
@@ -702,20 +806,29 @@ async function driveUpload(file, onProg){
     off = end; onProg && onProg(off / file.size);
   }
 }
+async function driveUpload(file, onProg){
+  if(driveMode !== "proxy"){
+    try{ return await driveDirect(file, onProg); }
+    catch(e){ if(!(e instanceof DirectOff)) throw e; driveMode = "proxy"; console.warn("Drive direto indisponível, usando o script:", e.message); kickUploads(); }
+  }
+  return driveProxy(file, onProg);
+}
 const upQueue = []; let upWorkers = 0, upDone = 0, upFail = 0; const upCur = {};
+const upMax = () => driveMode === "proxy" ? 3 : 2;   // direto: 2 (uplink do 4G/5G); proxy: 3 (o Apps Script é lento)
+function kickUploads(){ while(upWorkers < upMax() && upQueue.length) uploadWorker(); }
 function queueUpload(file){
   if(!CONFIG.drive) return;
-  upQueue.push(file);
-  while(upWorkers < 3 && upQueue.length) uploadWorker();   // 3 vídeos ao mesmo tempo (o Apps Script é lento)
+  upQueue.push(file);   // fila FIFO: quem chama decide a ordem
+  kickUploads();
 }
 async function uploadWorker(){
   upWorkers++;
-  while(upQueue.length){
+  while(upQueue.length && upWorkers <= upMax()){
     const f = upQueue.shift();
     let ok = false;
     for(let round = 1; round <= 3 && !ok; round++){
       try{ await driveUpload(f, p => { upCur[f.name] = Math.round(p*100) + "%"; status(); }); ok = true; }
-      catch(e){ upCur[f.name] = "erro, tentando de novo"; status(); await sleep(5000*round); }
+      catch(e){ console.warn("upload", f.name, e && e.message); upCur[f.name] = "erro, tentando de novo"; status(); await sleep(5000*round); }
     }
     delete upCur[f.name]; ok ? upDone++ : upFail++;
     if(ok) try{ localStorage.setItem("up:" + f.name, "1"); }catch(e){}
@@ -725,12 +838,15 @@ async function uploadWorker(){
 }
 
 // ---------- música (ffmpeg.wasm: junta o áudio sem regravar a imagem) ----------
-let ffCore = null;
+let ffCore = null, ffPre = null, ffJsUrl = null, ffWasm = null;   // mixador baixado no portão (blobs): funciona sem internet depois
 async function loadFF(){
   if(ffCore) return ffCore;
-  await new Promise((ok,no)=>{ const s = document.createElement("script"); s.src = "ff/ffmpeg-core.js"; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
-  ffCore = await createFFmpegCore({ locateFile: p => "ff/" + p });
-  const mus = new Uint8Array(await (await fetch(CONFIG.musica.arquivo)).arrayBuffer());
+  if(ffPre) await ffPre;
+  await new Promise((ok,no)=>{ const s = document.createElement("script"); s.src = ffJsUrl || "ff/ffmpeg-core.js"; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+  const opt = { locateFile: p => "ff/" + p };
+  if(ffWasm) opt.wasmBinary = await ffWasm.arrayBuffer();   // wasm já na memória: nem busca na rede
+  ffCore = await createFFmpegCore(opt);
+  const mus = new Uint8Array(await (musBlob || await (await fetch(CONFIG.musica.arquivo)).blob()).arrayBuffer());
   ffCore.FS.writeFile("musica.m4a", mus);
   return ffCore;
 }
@@ -777,7 +893,7 @@ function status(){
     const going = Object.entries(upCur).map(([n,p]) => n.replace(/\.(mp4|webm)$/,"") + " " + p);
     const pend = going.length + upQueue.length;
     const fim = !pend && upDone > 0 && !upFail && savedTotal && upDone >= savedTotal;
-    parts.push("☁️ Drive: " + upDone + " enviados" + (upFail ? ", " + upFail + " FALHARAM (abra ?videos depois pra reenviar)" : "") +
+    parts.push("☁️ Drive" + (driveMode ? " (" + driveMode + ")" : "") + ": " + upDone + " enviados" + (upFail ? ", " + upFail + " FALHARAM (abra ?videos depois pra reenviar)" : "") +
       (pend ? " · enviando " + pend + " — não feche a página" : (fim ? " ✓ tudo no Drive" : " · aguardando…")) + (going.length ? "\n" + going.join(" · ") : ""));
   }
   $("savestatus").textContent = parts.join("   ·   ");
@@ -818,6 +934,7 @@ async function showLoop(){
   // 1) guarda tudo no celular, 2) manda pro Drive, 3) gera as versões com música (e guarda/manda também)
   for(const v of vids){ queueUpload(v.file); if(await idbPut(v.file)) savedLocal++; status(); }
   for(const v of vids){
+    if(v.file.size > 600*1024*1024){ v.b2.textContent = "🎵 grande demais"; savedTotal--; status(); continue; }   // evita estourar a memória do ffmpeg
     try{
       await sleep(50);
       const fm = await addMusic(v);
@@ -893,6 +1010,10 @@ else {
   // portão: ELE toca "jogar", libera câmera + microfone, confere que está gravando, e só então entrega o celular
   $("gate").classList.add("on");
   let starting = false;
+  // prontidão (só ele vê, no portão)
+  const rd = { "câmera":"…", "microfone":"…", "música":"…", "mixador":"…" };
+  const ready = (k, v) => { if(k) rd[k] = v; $("gateready").textContent = Object.entries(rd).map(([n,s]) => n + " " + s).join(" · "); };
+  const blobOf = u => fetch(u).then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.blob(); });
   const begin = () => {
     $("gate").classList.remove("on");
     keepAwake();
@@ -902,12 +1023,30 @@ else {
   $("gatebtn").addEventListener("click", async ()=>{
     if(starting) return; starting = true;
     unlockMusic();
-    fetch("ff/ffmpeg-core.wasm").then(r=>r.blob()).catch(()=>{});   // pré-carrega o mixador de música
+    try{ navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(()=>{}); }catch(e){}
+    ready();
+    // baixa a música inteira (blob): a música ao vivo não depende mais da rede
+    const musP = blobOf(CONFIG.musica.arquivo).then(b => {
+      musBlob = b;
+      const swap = () => { if(!musT0){ bgm.src = URL.createObjectURL(b); bgm.load(); } };   // o grafo do Web Audio continua ligado ao mesmo <audio>
+      return (unlockP || Promise.resolve()).then(swap, swap);   // troca só depois do play de desbloqueio terminar
+    }).then(() => ready("música","✓"), () => ready("música","✗"));
+    // pré-carrega o mixador de música (ffmpeg) inteiro, pra gerar as versões com música mesmo sem internet
+    ffPre = Promise.all([blobOf("ff/ffmpeg-core.js"), blobOf("ff/ffmpeg-core.wasm")]).then(([j, w]) => {
+      ffJsUrl = URL.createObjectURL(new Blob([j], { type:"text/javascript" }));
+      ffWasm = w;
+      ready("mixador","✓");
+    }).catch(() => ready("mixador","✗"));
+    const fontsP = document.fonts ? document.fonts.ready.catch(()=>{}) : null;
+    const espera = Promise.race([Promise.all([musP, fontsP]), sleep(25000)]);   // no máximo ~25s
     keepAwake();
     let ok = false;
     try{ ok = await startCamera(); }catch(e){ recErr = e.name + ": " + e.message; }
+    ready("câmera", ok && camStream && camStream.getVideoTracks().length ? "✓" : "✗");
+    ready("microfone", ok && camStream && camStream.getAudioTracks().length ? "✓" : "✗");
     const gravando = ok && recC && recC.state === "recording";
     if(gravando || !CONFIG.gravar){
+      await espera; if(rd["música"] === "…") ready("música","✗");   // garante a música no celular antes de entregar (se não der, segue)
       if(gravando && !camStream.getAudioTracks().length){
         $("gateerr").textContent = "⚠ gravando SEM som (microfone bloqueado). toque em jogar pra seguir assim.";
         $("gateerr").style.display = "block"; $("gatebtn").onclick = begin; return;
