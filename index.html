@@ -510,13 +510,32 @@ function mkCanvas(w,h){ const c = document.createElement("canvas"); c.width = w;
 function startComposite(){
   try{ recC = newRec(camStream, chunksC, 12000000); }catch(e){ recC = null; recErr = e.name + ": " + e.message; return; }
   recT0 = recC._t0;
-  recC.addEventListener("start", ()=>{ recT0 = performance.now(); TL.frames.length = 0; });   // t=0 do arquivo ≈ evento "start"
+  recC.addEventListener("start", ()=>{ recT0 = performance.now(); TL.frames.length = 0; });
+  recC.addEventListener("error", e => diag("gravador erro: " + (e.error && e.error.name)));   // t=0 do arquivo ≈ evento "start"
   drawing = true; logTick(); requestAnimationFrame(frame);
 }
 let camFrames = 0, paintFrames = 0, diagT0 = 0, camSet = null;
+const DIAG = [];   // anotações do ensaio: buracos de imagem, eventos da câmera/microfone
+function fase(){
+  if($("loop").classList.contains("on")) return "tela final";
+  if($("reveal").classList.contains("on")) return "número";
+  if($("stats").classList.contains("on")) return "estatísticas";
+  if($("title").textContent.includes("BÔNUS")) return "pedido";
+  return "jogo";
+}
+function diag(msg){ const t = recT0 ? ((performance.now() - recT0)/1000).toFixed(1) + "s" : "-"; DIAG.push(t + " " + msg + " (" + fase() + ")"); console.log("DIAG", t, msg); }
 function diagFps(){
   diagT0 = performance.now();
-  if(camVid && camVid.requestVideoFrameCallback){ const f = () => { camFrames++; if(drawing) camVid.requestVideoFrameCallback(f); }; camVid.requestVideoFrameCallback(f); }
+  if(camVid && camVid.requestVideoFrameCallback){
+    let last = 0;
+    const f = () => { const now = performance.now(); camFrames++;
+      if(last && now - last > 400) diag("câmera sem imagem por " + ((now - last)/1000).toFixed(1) + "s");
+      last = now; if(drawing) camVid.requestVideoFrameCallback(f); };
+    camVid.requestVideoFrameCallback(f);
+  }
+  try{ camStream.getTracks().forEach(t => { ["mute","unmute","ended"].forEach(ev => t.addEventListener(ev, () => diag(t.kind + " " + ev))); }); }catch(e){}
+  document.addEventListener("visibilitychange", () => diag("página " + document.visibilityState));
+  camVid && ["pause","waiting","stalled","suspend"].forEach(ev => camVid.addEventListener(ev, () => diag("vídeo oculto: " + ev)));
 }
 function startClipB(){ // chamado quando o número aparece: só marca o instante (os clipes são cortados depois)
   if(recC){ tRevealRel = performance.now() - recT0; console.log("montar: revelação em", (tRevealRel/1000).toFixed(3), "s do arquivo"); }
@@ -601,8 +620,11 @@ async function montar(raw, layout, start, end, onProg){
   const trim = {}; if(start) trim.start = start; if(end) trim.end = end;
   const conv = await MB.Conversion.init({ input, output, video, audio: {}, trim, showWarnings: false });
   if(!conv.isValid) throw new Error("conversão inválida: " + conv.discardedTracks.map(d => d.reason).join(","));
-  if(onProg) conv.onProgress = p => onProg(p);
-  await conv.execute();
+  let lastP = performance.now(), lastV = -1;
+  conv.onProgress = p => { if(p !== lastV){ lastV = p; lastP = performance.now(); } onProg && onProg(p); };
+  // vigia: se ficar 45s sem avançar (ex.: "finalizando" eterno no Safari), cancela e segue pro próximo
+  let vig; const travou = new Promise((_, no) => { vig = setInterval(() => { if(performance.now() - lastP > 45000){ clearInterval(vig); try{ conv.cancel(); }catch(e){} no(new Error("travou em " + Math.round(lastV*100) + "%")); } }, 2000); });
+  try{ await Promise.race([conv.execute(), travou]); } finally{ clearInterval(vig); }
   const buf = output.target.buffer;
   try{ input.dispose && input.dispose(); }catch(e){}
   if(!buf || buf.byteLength < 1000) throw new Error("saída vazia");
@@ -965,6 +987,9 @@ async function showLoop(){
   if(ENSAIO){ const sec = (performance.now() - diagT0) / 1000, st = camSet;
     $("loopcap").textContent = "ensaio · câmera " + (camFrames ? (camFrames/sec).toFixed(0) : "?") + " fps · registro " + (paintFrames/sec).toFixed(0) + "/s · " + TL.states.length + " estados · " + (st ? st.width + "×" + st.height + " @" + st.frameRate : ""); }
   $("loop").classList.add("on"); status();
+  if(ENSAIO){ const d = document.createElement("div"); d.id = "diagbox"; d.style.cssText = "font:12px/1.4 ui-monospace,monospace;color:#e3a86a;text-align:left;max-width:400px;margin:10px 0;white-space:pre-wrap";
+    const upd = () => { d.textContent = "iOS: " + ((navigator.userAgent.match(/OS (\d+[_\d]*)/)||[])[1]||"?").replace(/_/g,".") + "  · " + (recC && recC.mimeType || "") + "\n" + (DIAG.length ? DIAG.join("\n") : "nenhum problema anotado"); };
+    upd(); setInterval(upd, 2000); $("savestatus").after(d); }
   const rows = mont.map(v => { const [b1, b2] = rowEl(v.label); b1.textContent = "na fila…"; v.b1 = b1; v.b2 = b2; return v; });
   queueUpload(raw); if(await idbPut(raw)) savedLocal++; status();
   // 2) os outros 4, um de cada vez (cada um: monta → salva → envia), liberando a memória entre eles
@@ -989,6 +1014,7 @@ async function showLoop(){
     }catch(err){
       console.warn("montar", v.key, err);
       v.b1.textContent = "indisponível"; savedTotal -= CONFIG.musica.versoes ? 2 : 1;
+      diag("montagem " + v.label + " falhou: " + (err && err.message));
       if(v.b2) v.b2.textContent = "🎵 indisponível";
     }
     status();
