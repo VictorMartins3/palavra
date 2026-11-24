@@ -444,9 +444,9 @@ function endCue(){
 }
 
 // ====================== GRAVAÇÃO ======================
-// recC = vídeo COMPLETO (do "começar" até o fim do pedido): tela à esquerda + rosto à direita, com áudio.
-// recB = só a REAÇÃO: câmera pura, da revelação do número até o fim (vira o loop).
-// recI = INSTAGRAM 9:16, 30s: rosto em cima + tela embaixo, da revelação do número em diante.
+// recC = o ÚNICO gravador ao vivo: câmera pura + microfone, do "jogar" até o fim do pedido.
+// Os outros vídeos (reação, Instagram 30s, completos 9:16 e lado a lado) são montados DEPOIS, a partir dele
+// + do registro da tela (TL). recB/recI/recF ficam nulos (mantidos só pra compatibilidade).
 let tReveal = 0, recF=null, chunksF=[];
 const SESSAO = (()=>{ const d = new Date(), z = n => String(n).padStart(2,"0"); return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+" "+z(d.getHours())+"h"+z(d.getMinutes()); })();
 let camStream=null, camVid=null, recB=null, recC=null, recI=null, chunksB=[], chunksC=[], chunksI=[], recType="video/webm", drawing=false;
@@ -490,99 +490,123 @@ async function startCamera(){
   document.body.appendChild(camVid);
   try{ await camVid.play(); }catch(e){}
   diagFps();
+  try{ camSet = camStream.getVideoTracks()[0].getSettings(); }catch(e){}
   startComposite();
   return true;
 }
 
-// ---------- compositor: redesenha a tela num canvas e junta com o rosto ----------
+// ---------- AO VIVO: só UM gravador (câmera pura + microfone) + registro do que estava na tela ----------
+// Nada de canvas/captureStream durante o pedido: os vídeos montados (tela + rosto) são gerados DEPOIS,
+// a partir do arquivo da câmera + este registro (mediabunny + WebCodecs).
 const LW = 1920, LH = 1080, LHALF = 960;           // completo: lado a lado
-const IW = 1080, IH = 1920, IFACE = 840;           // instagram: rosto em cima (560), tela embaixo (720)
+const IW = 1080, IH = 1920, IFACE = 840;           // instagram: rosto em cima, tela embaixo
 const IG_MS = 30000;
 let extraTracks = [];
-let cxL = null, cxI = null, ops = [], bodyBg = "#121214", lastPaint = 0;
+let ops = [], bodyBg = "#121214", lastPaint = 0, recT0 = 0, tRevealRel = -1;
+const TL = { states: [], frames: [] };             // states: estados distintos da tela; frames: [ms desde o início da gravação, índice]
+let tlKey = "";
+const mx = document.createElement("canvas").getContext("2d");   // só pra medir texto (quebra de linha)
 function mkCanvas(w,h){ const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
-function canvasRec(cv, chunks, vbps, fps=30){
-  try{
-    const out = cv.captureStream(fps);
-    camStream.getAudioTracks().forEach(t => { const c = t.clone(); extraTracks.push(c); out.addTrack(c); });
-    return newRec(out, chunks, vbps);
-  }catch(e){ recErr = e.name + ": " + e.message; return null; }
-}
 function startComposite(){
-  const cv = mkCanvas(LW, LH);
-  if(!cv.captureStream){ try{ recC = newRec(camStream, chunksC); }catch(e){} return; } // sem canvas: só câmera
-  cxL = cv.getContext("2d");
-  try{ snapshot(); paintL(); }catch(e){}   // primeiro frame já desenhado (evita início preto)
-  const cvI = mkCanvas(IW, IH); cxI = cvI.getContext("2d");
-  try{ paintI(); }catch(e){}
-  drawing = true; requestAnimationFrame(frame);
-  recC = canvasRec(cv, chunksC, 12000000, 30);
-  recF = canvasRec(cvI, chunksF, 12000000, 30);   // completo em formato Instagram (9:16)
-  if(!recC){ try{ recC = newRec(camStream, chunksC); }catch(e){} }
+  try{ recC = newRec(camStream, chunksC, 12000000); }catch(e){ recC = null; recErr = e.name + ": " + e.message; return; }
+  recT0 = recC._t0;
+  recC.addEventListener("start", ()=>{ recT0 = performance.now(); TL.frames.length = 0; });   // t=0 do arquivo ≈ evento "start"
+  drawing = true; logTick(); requestAnimationFrame(frame);
 }
-let camFrames = 0, paintFrames = 0, diagT0 = 0;
+let camFrames = 0, paintFrames = 0, diagT0 = 0, camSet = null;
 function diagFps(){
   diagT0 = performance.now();
   if(camVid && camVid.requestVideoFrameCallback){ const f = () => { camFrames++; if(drawing) camVid.requestVideoFrameCallback(f); }; camVid.requestVideoFrameCallback(f); }
 }
-function startClipB(){ // chamado quando o número aparece
-  if(!camStream || !window.MediaRecorder) return;
-  try{ recB = newRec(camStream, chunksB, 16000000); /* rosto puro */ }catch(e){ recB = null; recErr = e.name; }
-  if(drawing && cxI){
-    recI = canvasRec(cxI.canvas, chunksI, 14000000, 30); /* instagram 30s */
-    setTimeout(()=>{ if(recI && recI.state !== "inactive") try{ recI.stop(); }catch(e){} }, IG_MS);
-  }
+function startClipB(){ // chamado quando o número aparece: só marca o instante (os clipes são cortados depois)
+  if(recC){ tRevealRel = performance.now() - recT0; console.log("montar: revelação em", (tRevealRel/1000).toFixed(3), "s do arquivo"); }
+}
+function logTick(){
+  paintFrames++;
+  snapshot();
+  const st = { W: innerWidth, H: innerHeight, done, bg: bodyBg, ops };
+  const key = JSON.stringify(st);
+  if(key !== tlKey){ TL.states.push(st); tlKey = key; }
+  TL.frames.push([Math.round(performance.now() - recT0), TL.states.length - 1]);
 }
 function frame(ts){
   if(!drawing) return;
-  if(ts - lastPaint > 30){   // ~30 quadros por segundo
-    lastPaint = ts;
-    try{
-      paintFrames++;
-      snapshot();
-      paintL();
-      if(cxI) paintI();
-    }catch(e){}
-  }
+  if(ts - lastPaint > 30){ lastPaint = ts; try{ logTick(); }catch(e){} }   // ~30 registros por segundo
   requestAnimationFrame(frame);
+}
+function stateAt(ms){   // último estado registrado até esse instante
+  const f = TL.frames; if(!f.length) return null;
+  let lo = 0, hi = f.length - 1;
+  if(ms <= f[0][0]) return TL.states[f[0][1]];
+  while(lo < hi){ const m = (lo + hi + 1) >> 1; if(f[m][0] <= ms) lo = m; else hi = m - 1; }
+  return TL.states[f[lo][1]];
 }
 function rr(c,x,y,w,h,r){
   c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
   c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
 }
-function drawScreen(c, x, y, w, h, s, ox, oy){
+function drawScreen(c, st, x, y, w, h, s, ox, oy){
   c.save();
   c.beginPath(); c.rect(x,y,w,h); c.clip();
-  c.fillStyle = bodyBg; c.fillRect(x,y,w,h);
+  c.fillStyle = st.bg; c.fillRect(x,y,w,h);
   c.setTransform(s,0,0,s,ox,oy);
-  for(const o of ops) (o.t==="b" ? drawBox : drawText)(c, o);
+  for(const o of st.ops) (o.t==="b" ? drawBox : drawText)(c, o);
   c.restore();
 }
-function drawFace(c, x, y, w, h){
-  if(!camVid || !camVid.videoWidth) return;
-  const vw = camVid.videoWidth, vh = camVid.videoHeight, sc = Math.max(w/vw, h/vh);
+function drawFace(c, smp, x, y, w, h){   // smp = VideoSample do mediabunny: draw() já aplica a rotação do MP4 (sempre em pé)
+  const vw = smp.displayWidth, vh = smp.displayHeight; if(!vw || !vh) return;
+  const sc = Math.max(w/vw, h/vh);
   c.save();
   c.beginPath(); c.rect(x,y,w,h); c.clip();
-  c.translate(x + w/2, y + h/2); c.scale(-1,1);
-  c.drawImage(camVid, -vw*sc/2, -vh*sc/2, vw*sc, vh*sc);
+  c.translate(x + w/2, y + h/2); c.scale(-1,1);   // espelhado, como a câmera frontal
+  smp.draw(c, -vw*sc/2, -vh*sc/2, vw*sc, vh*sc);
   c.restore();
 }
-function paintL(){
-  const c = cxL, W = innerWidth, H = innerHeight, s = Math.min(LHALF/W, LH/H);
+function paintL(c, smp, st){
+  const W = st.W, H = st.H, s = Math.min(LHALF/W, LH/H);
   c.setTransform(1,0,0,1,0,0);
   c.fillStyle = "#000"; c.fillRect(0,0,LW,LH);
-  drawScreen(c, 0, 0, LHALF, LH, s, (LHALF - W*s)/2, (LH - H*s)/2);
-  drawFace(c, LHALF, 0, LHALF, LH);
+  drawScreen(c, st, 0, 0, LHALF, LH, s, (LHALF - W*s)/2, (LH - H*s)/2);
+  drawFace(c, smp, LHALF, 0, LHALF, LH);
 }
-function paintI(){
+function paintI(c, smp, st){
   // na revelação e no pedido o teclado some, então mostra só a parte de cima da tela (onde está tudo), maior
-  const c = cxI, W = innerWidth, H = innerHeight, area = IH - IFACE;
-  const Hw = done ? Math.min(H, 700) : H, s = Math.min(IW/W, area/Hw);
+  const W = st.W, H = st.H, area = IH - IFACE;
+  const Hw = st.done ? Math.min(H, 700) : H, s = Math.min(IW/W, area/Hw);
   c.setTransform(1,0,0,1,0,0);
-  c.fillStyle = bodyBg; c.fillRect(0,0,IW,IH);
-  drawFace(c, 0, 0, IW, IFACE);
-  drawScreen(c, 0, IFACE, IW, area, s, (IW - W*s)/2, IFACE + (area - Hw*s)/2);
+  c.fillStyle = st.bg; c.fillRect(0,0,IW,IH);
+  drawFace(c, smp, 0, 0, IW, IFACE);
+  drawScreen(c, st, 0, IFACE, IW, area, s, (IW - W*s)/2, IFACE + (area - Hw*s)/2);
   c.fillStyle = "rgba(255,255,255,.12)"; c.fillRect(0, IFACE, IW, 2);
+}
+// ---------- DEPOIS: monta os vídeos a partir do arquivo da câmera (mediabunny, vendorizado em lib/) ----------
+let mbP = null;
+const loadMB = () => mbP || (mbP = import("./lib/mediabunny-1.65.2.min.mjs").catch(e => { mbP = null; throw e; }));
+// layout: null = só o rosto (câmera pura); "I" = 9:16; "L" = lado a lado. Tempos em segundos do arquivo.
+async function montar(raw, layout, start, end, onProg){
+  const MB = await loadMB();
+  const input = new MB.Input({ source: new MB.BlobSource(raw), formats: MB.ALL_FORMATS });
+  const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: "in-memory" }), target: new MB.BufferTarget() });
+  const off = (start || 0) * 1000;   // o mediabunny entrega os quadros já com t=0 no início do corte
+  let cv = null, cx = null;
+  const W = layout === "L" ? LW : IW, H = layout === "L" ? LH : IH, paint = layout === "L" ? paintL : paintI;
+  const video = layout === "copy" ? {} : layout ? {
+    codec: "avc", bitrate: 12000000, frameRate: 30, keyFrameInterval: 2, processedWidth: W, processedHeight: H,
+    process: smp => {
+      if(!cv){ cv = new OffscreenCanvas(W, H); cx = cv.getContext("2d"); }
+      const st = stateAt(smp.timestamp * 1000 + off);
+      if(st) paint(cx, smp, st);
+      return cv;
+    } } : { codec: "avc", bitrate: 16000000, frameRate: 30, keyFrameInterval: 2, forceTranscode: true };
+  const trim = {}; if(start) trim.start = start; if(end) trim.end = end;
+  const conv = await MB.Conversion.init({ input, output, video, audio: {}, trim, showWarnings: false });
+  if(!conv.isValid) throw new Error("conversão inválida: " + conv.discardedTracks.map(d => d.reason).join(","));
+  if(onProg) conv.onProgress = p => onProg(p);
+  await conv.execute();
+  const buf = output.target.buffer;
+  try{ input.dispose && input.dispose(); }catch(e){}
+  if(!buf || buf.byteLength < 1000) throw new Error("saída vazia");
+  return buf;
 }
 
 // lê a página e monta a lista do que desenhar (uma vez por frame, usada nos dois vídeos)
@@ -624,7 +648,7 @@ function wrap(str, n, maxW){
   const words = str.split(" "), lines = []; let cur = "";
   for(const w of words){
     const t = cur ? cur+" "+w : w;
-    if(cur && cxL.measureText(t).width > maxW+1 && lines.length < n-1){ lines.push(cur); cur = w; } else cur = t;
+    if(cur && mx.measureText(t).width > maxW+1 && lines.length < n-1){ lines.push(cur); cur = w; } else cur = t;
   }
   lines.push(cur); return lines;
 }
@@ -641,7 +665,7 @@ function text(node, cs, op){
   if(cs.textTransform==="uppercase") str = str.toUpperCase();
   let lines = [str];
   if(rects.length > 1){
-    cxL.font = font; if("letterSpacing" in cxL) cxL.letterSpacing = ls;
+    mx.font = font; if("letterSpacing" in mx) mx.letterSpacing = ls;
     lines = wrap(str, rects.length, Math.max(...rects.map(r=>r.width))/kx);
   }
   ops.push({ t:"x", font, ls, color: cs.color, op, kx, ky,
@@ -927,28 +951,50 @@ function rowEl(label){
   return row.querySelectorAll("a");
 }
 async function showLoop(){
-  const vids = [];
-  for(const v of VIDS){
-    const ch = v.chunks(); if(!ch.length) continue;
-    const r = v.rec(), type = ((r && r.mimeType) || recType || "video/mp4").split(";")[0];
-    v.name = SESSAO + " - " + v.name;
-    v.file = new File([new Blob(ch, { type })], v.name + (type.includes("mp4") ? ".mp4" : ".webm"), { type });
-    v.rec = r; vids.push(v);
-  }
-  if(!vids.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
-  savedTotal = vids.length * (CONFIG.musica.versoes ? 2 : 1);
-  for(const v of vids){
-    const [b1, b2] = rowEl(v.label); v.b2 = b2;
-    const url = shareBtn(b1, v.file, CONFIG.musica.versoes ? "⬇ sem música" : "⬇ salvar");
-    if(v.key === "B"){ const lv = $("loopvid"); lv.src = url; lv.play().catch(()=>{}); }
-  }
-  if(ENSAIO){ const sec = (performance.now() - diagT0) / 1000, st = camStream && camStream.getVideoTracks()[0] && camStream.getVideoTracks()[0].getSettings();
-    $("loopcap").textContent = "ensaio · câmera " + (camFrames ? (camFrames/sec).toFixed(0) : "?") + " fps · desenho " + (paintFrames/sec).toFixed(0) + " fps · " + (st ? st.width + "×" + st.height + " pedido " + st.frameRate : ""); }
+  if(!chunksC.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
+  const type = ((recC && recC.mimeType) || recType || "video/mp4").split(";")[0], ext = type.includes("mp4") ? "mp4" : "webm";
+  // 1) PRIMEIRO o arquivo original da câmera: salva no celular e manda pro Drive antes de montar qualquer coisa
+  const raw = new File([new Blob(chunksC, { type })], SESSAO + " - camera-completa." + ext, { type });
+  chunksC = [];
+  const durS = Math.max(1, ((recC && recC._t1 || performance.now()) - recT0) / 1000);
+  const rv = tRevealRel > 0 ? tRevealRel / 1000 : 0;
+  const mont = ext === "mp4" ? VIDS : [];   // webm (sem MP4 no aparelho): fica só o original
+  savedTotal = 1 + mont.length * (CONFIG.musica.versoes ? 2 : 1);
+  const [rb, rb2] = rowEl("Câmera completa (original)"); if(rb2) rb2.style.display = "none";
+  const lv = $("loopvid"); lv.src = shareBtn(rb, raw, "⬇ salvar"); lv.play().catch(()=>{});
+  if(ENSAIO){ const sec = (performance.now() - diagT0) / 1000, st = camSet;
+    $("loopcap").textContent = "ensaio · câmera " + (camFrames ? (camFrames/sec).toFixed(0) : "?") + " fps · registro " + (paintFrames/sec).toFixed(0) + "/s · " + TL.states.length + " estados · " + (st ? st.width + "×" + st.height + " @" + st.frameRate : ""); }
   $("loop").classList.add("on"); status();
-  // 1) guarda tudo no celular, 2) manda pro Drive, 3) gera as versões com música (e guarda/manda também)
-  for(const v of vids){ queueUpload(v.file); if(await idbPut(v.file)) savedLocal++; status(); }
+  const rows = mont.map(v => { const [b1, b2] = rowEl(v.label); b1.textContent = "na fila…"; v.b1 = b1; v.b2 = b2; return v; });
+  queueUpload(raw); if(await idbPut(raw)) savedLocal++; status();
+  // 2) os outros 4, um de cada vez (cada um: monta → salva → envia), liberando a memória entre eles
+  const corte = { B:[rv, 0], I:[rv, rv + IG_MS/1000], F:[0, 0], C:[0, 0] };
+  const lay = { B:null, I:"I", F:"I", C:"L" };
+  const done2 = [];
+  for(const v of rows){
+    const [s, e] = corte[v.key], fim = e ? Math.min(e, durS + 1) : 0;
+    v.name = SESSAO + " - " + v.name;
+    const prog = p => { v.b1.textContent = p >= .99 ? "finalizando…" : "montando " + Math.round(p*100) + "%…"; };
+    try{
+      prog(0); await sleep(30);
+      let buf;
+      try{ buf = await montar(raw, lay[v.key], s, fim, prog); }
+      catch(err){ if(v.key !== "B") throw err; console.warn("rosto: recodificar falhou, copiando", err); buf = await montar(raw, "copy", s, 0, prog); }
+      v.file = new File([buf], v.name + ".mp4", { type:"video/mp4" }); buf = null;
+      v.rec = { _t0: recT0 + s*1000, _t1: recT0 + (fim || durS)*1000 };   // pro mixador de música (se ligado)
+      const url = shareBtn(v.b1, v.file, CONFIG.musica.versoes ? "⬇ sem música" : "⬇ salvar");
+      if(v.key === "B"){ lv.src = url; lv.play().catch(()=>{}); }   // o loop passa a ser só a reação
+      queueUpload(v.file); if(await idbPut(v.file)) savedLocal++;
+      done2.push(v);
+    }catch(err){
+      console.warn("montar", v.key, err);
+      v.b1.textContent = "indisponível"; savedTotal -= CONFIG.musica.versoes ? 2 : 1;
+      if(v.b2) v.b2.textContent = "🎵 indisponível";
+    }
+    status();
+  }
   if(!CONFIG.musica.versoes) return;
-  for(const v of vids){
+  for(const v of done2){
     if(v.file.size > 600*1024*1024){ v.b2.textContent = "🎵 grande demais"; savedTotal--; status(); continue; }   // evita estourar a memória do ffmpeg
     try{
       await sleep(50);
@@ -1029,6 +1075,7 @@ else {
   const rd = { "câmera":"…", "microfone":"…" };
   if(CONFIG.musica.tocarNoApp) rd["música"] = "…";
   if(CONFIG.musica.versoes) rd["mixador"] = "…";
+  if(CONFIG.gravar) rd["montador"] = "…";
   const ready = (k, v) => { if(k) rd[k] = v; $("gateready").textContent = Object.entries(rd).map(([n,s]) => n + " " + s).join(" · "); };
   const blobOf = u => fetch(u).then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.blob(); });
   const begin = () => {
@@ -1054,8 +1101,10 @@ else {
       ffWasm = w;
       ready("mixador","✓");
     }).catch(() => ready("mixador","✗"));
+    // pré-carrega o montador de vídeos (mediabunny, 700 KB): depois funciona mesmo sem internet
+    const mbReady = CONFIG.gravar ? loadMB().then(() => ready("montador","✓"), () => ready("montador","✗")) : null;
     const fontsP = document.fonts ? Promise.all(["400 16px Mitr","600 16px Mitr","600 20px Fraunces","italic 400 20px Fraunces"].map(f => document.fonts.load(f).catch(()=>{}))).then(()=>document.fonts.ready).catch(()=>{}) : null;   // baixa já as 4 fontes (a revelação usa Fraunces)
-    const espera = Promise.race([Promise.all([musP, fontsP]), sleep(25000)]);   // no máximo ~25s
+    const espera = Promise.race([Promise.all([musP, fontsP, mbReady]), sleep(25000)]);   // no máximo ~25s
     keepAwake();
     let ok = false;
     try{ ok = await startCamera(); }catch(e){ recErr = e.name + ": " + e.message; }
