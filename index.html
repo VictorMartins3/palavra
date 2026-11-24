@@ -91,7 +91,7 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 .vrow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;text-align:left;font-size:13px;color:var(--muted)}
 .vbtn{font:600 13px "Mitr",sans-serif;text-decoration:none;border:1px solid var(--tile);color:var(--ink);border-radius:999px;padding:10px 12px;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
 .vbtn.wait{opacity:.45;pointer-events:none}
-#savestatus{margin-top:14px;font-size:12px;color:var(--muted);max-width:400px;min-height:1.4em}
+#savestatus{white-space:pre-line;margin-top:14px;font-size:12px;color:var(--muted);max-width:400px;min-height:1.4em}
 .saves{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .saves a{display:none;font:600 14px "Mitr",sans-serif;text-decoration:none;border:1px solid var(--tile);color:var(--ink);border-radius:999px;padding:11px 20px;min-height:44px;display:none;align-items:center}
 @media (prefers-reduced-motion:reduce){.tile.flip,.tile.dance{animation:none}#count,.rline{transition:opacity .4s}}
@@ -174,7 +174,7 @@ const CONFIG = {
                              //    "I can tell by the look in your eyes" quando aparece "(pode levantar o olho agora)"
     volume: 0.5
   },
-  drive: "",                 // URL do Google Apps Script (/exec) pra mandar os vídeos pro Drive. Vazio = não envia.
+  drive: "https://script.google.com/macros/s/AKfycbyp_LLUbr36nZVNu4dXERsfGXmolLWCnuzo57i7aWuN53b2x0i5MAmtnE7pplzMpFysUg/exec",                 // URL do Google Apps Script (/exec) pra mandar os vídeos pro Drive. Vazio = não envia.
   gravar: true               // true = tenta gravar a câmera (só em HTTPS/GitHub Pages)
 };
 // ?teste no fim do link pula direto pra contagem (sem câmera), pra testar.
@@ -649,23 +649,24 @@ async function driveUpload(file, onProg){
     off = end; onProg && onProg(off / file.size);
   }
 }
-const upQueue = []; let upBusy = false, upDone = 0, upFail = 0, upCur = "";
+const upQueue = []; let upWorkers = 0, upDone = 0, upFail = 0; const upCur = {};
 function queueUpload(file){
   if(!CONFIG.drive) return;
-  upQueue.push(file); pumpUploads();
+  upQueue.push(file);
+  while(upWorkers < 3 && upQueue.length) uploadWorker();   // 3 vídeos ao mesmo tempo (o Apps Script é lento)
 }
-async function pumpUploads(){
-  if(upBusy) return; upBusy = true;
+async function uploadWorker(){
+  upWorkers++;
   while(upQueue.length){
     const f = upQueue.shift();
     let ok = false;
     for(let round = 1; round <= 3 && !ok; round++){
-      try{ await driveUpload(f, p => { upCur = f.name + " " + Math.round(p*100) + "%"; status(); }); ok = true; }
-      catch(e){ upCur = f.name + " — erro, tentando de novo…"; status(); await sleep(5000*round); }
+      try{ await driveUpload(f, p => { upCur[f.name] = Math.round(p*100) + "%"; status(); }); ok = true; }
+      catch(e){ upCur[f.name] = "erro, tentando de novo"; status(); await sleep(5000*round); }
     }
-    ok ? upDone++ : upFail++; upCur = ""; status();
+    delete upCur[f.name]; ok ? upDone++ : upFail++; status();
   }
-  upBusy = false; status();
+  upWorkers--; status();
 }
 
 // ---------- música (ffmpeg.wasm: junta o áudio sem regravar a imagem) ----------
@@ -712,7 +713,11 @@ let savedLocal = 0, savedTotal = 0;
 function status(){
   const parts = [];
   if(savedTotal) parts.push((savedLocal === savedTotal ? "✓" : "…") + " salvos no celular: " + savedLocal + "/" + savedTotal);
-  if(CONFIG.drive) parts.push("☁️ Drive: " + upDone + " enviados" + (upFail ? ", " + upFail + " falharam" : "") + (upCur ? " · " + upCur : (upQueue.length || upBusy ? "" : " ✓")));
+  if(CONFIG.drive){
+    const going = Object.entries(upCur).map(([n,p]) => n.replace(/\.(mp4|webm)$/,"") + " " + p);
+    const pend = going.length + upQueue.length;
+    parts.push("☁️ Drive: " + upDone + " enviados" + (upFail ? ", " + upFail + " falharam" : "") + (pend ? " · enviando " + pend + " (não feche a página)" : " ✓") + (going.length ? "\n" + going.join(" · ") : ""));
+  }
   $("savestatus").textContent = parts.join("   ·   ");
 }
 function shareBtn(btn, file, label){
