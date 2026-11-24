@@ -505,15 +505,15 @@ function startComposite(){
   const cvI = mkCanvas(IW, IH); cxI = cvI.getContext("2d");
   try{ paintI(); }catch(e){}
   drawing = true; requestAnimationFrame(frame);
-  recC = canvasRec(cv, chunksC);
-  recF = canvasRec(cvI, chunksF, 6000000);   // completo em formato Instagram (9:16)
+  recC = canvasRec(cv, chunksC, 10000000, 60);
+  recF = canvasRec(cvI, chunksF, 10000000, 60);   // completo em formato Instagram (9:16)
   if(!recC){ try{ recC = newRec(camStream, chunksC); }catch(e){} }
 }
 function startClipB(){ // chamado quando o número aparece
   if(!camStream || !window.MediaRecorder) return;
-  try{ recB = newRec(camStream, chunksB, 16000000); /* rosto puro, 60 fps */ }catch(e){ recB = null; recErr = e.name; }
+  try{ recB = newRec(camStream, chunksB, 20000000); /* rosto puro, 60 fps */ }catch(e){ recB = null; recErr = e.name; }
   if(drawing && cxI){
-    recI = canvasRec(cxI.canvas, chunksI, 12000000, 60); /* instagram 30s a 60 fps */
+    recI = canvasRec(cxI.canvas, chunksI, 16000000, 60); /* instagram 30s a 60 fps */
     setTimeout(()=>{ if(recI && recI.state !== "inactive") try{ recI.stop(); }catch(e){} }, IG_MS);
   }
 }
