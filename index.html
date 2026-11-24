@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Palavra do Dia</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;600&family=Fraunces:ital,wght@0,600;1,400&display=swap" rel="stylesheet">
 <style>
 /*
@@ -16,7 +17,8 @@ LAYOUT: coluna única, feito pra celular na mão dela
 */
 :root{color-scheme:dark;--bg:#121214;--ink:#f2f2f2;--muted:#8a8a91;--tile:#3a3a3f;--empty:#2a2a2e;--green:#3aa394;--yellow:#d3ad69;--gray:#312a2c;--key:#4c4347}
 *{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%}
+html,body{height:100%;overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+@supports (height:100dvh){html,body{height:100dvh}}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 "Mitr",system-ui,sans-serif;overflow:hidden;display:flex;flex-direction:column;align-items:center;user-select:none;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 header{width:100%;max-width:520px;display:flex;align-items:center;justify-content:center;padding:14px 16px 6px;position:relative}
 h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
@@ -36,12 +38,14 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 @keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
 @keyframes dance{40%{transform:translateY(-14px)}70%{transform:translateY(3px)}}
 @keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
-#kb{width:100%;max-width:520px;padding:8px 6px calc(12px + env(safe-area-inset-bottom));display:grid;gap:7px}
+#kb{width:100%;max-width:520px;padding:8px 6px 12px;display:grid;gap:7px}
 .kr{display:flex;gap:5px;justify-content:center}
 .k{flex:1;max-width:44px;height:56px;border:0;border-radius:6px;background:var(--key);color:var(--ink);font:600 17px "Mitr",sans-serif;cursor:pointer;display:grid;place-items:center}
 .k.wide{max-width:72px;flex:1.6;font-size:13px}
 .k.green{background:var(--green)}.k.yellow{background:var(--yellow)}.k.gray{background:#241f20;color:#6d6567}
 .k:focus-visible{outline:2px solid #fff}
+.k,.tile{touch-action:manipulation;-webkit-user-select:none;-webkit-touch-callout:none}
+@media (max-height:620px){.k{height:46px}#kb{gap:5px}header{padding-top:8px}h1{font-size:26px}}
 #toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#f2f2f2;color:#121214;padding:10px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 #toast.on{opacity:1}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;place-items:center;padding:16px;z-index:5}
@@ -77,6 +81,8 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 #gate h3{font:400 16px "Mitr",sans-serif;color:var(--muted);margin:0 0 22px;max-width:16em;line-height:1.5}
 #gate button{font:600 20px "Mitr",sans-serif;border:0;border-radius:999px;padding:16px 40px;min-height:52px;background:var(--green);color:#fff;cursor:pointer}
 #gatehint{margin-top:18px;font-size:12px;color:#55555c;max-width:18em}
+#gateerr{display:none;margin-top:16px;font-size:14px;color:#e36a6a;max-width:20em}
+#gateskip{display:none;margin-top:14px;font-size:13px;color:var(--muted);background:none;border:0;text-decoration:underline;cursor:pointer}
 #loopvid{width:100%;max-width:360px;aspect-ratio:3/4;object-fit:cover;border-radius:16px;background:#000;transform:scaleX(-1)}
 #loopcap{font:italic 400 clamp(18px,5vw,24px)/1.3 "Fraunces",serif;margin:18px 0 20px}
 .saves{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -116,18 +122,21 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 </div>
 
 <div class="full" id="gate">
-  <h3>Antes de entregar o celular pra ela: toque abaixo e permita a câmera. Depois é só passar o jogo pra ela jogar.</h3>
-  <button id="gatebtn">▶ começar</button>
-  <div id="gatehint">a gravação começa agora e fica escondida. não precisa gravar a tela do celular: o vídeo final já junta o jogo e o rosto dela lado a lado.</div>
+  <!-- ELE toca aqui e permite câmera + microfone; depois entrega o celular. Texto neutro de propósito. -->
+  <h3>Palavra do dia</h3>
+  <button id="gatebtn">▶ jogar</button>
+  <div id="gatehint">permita o acesso quando o celular pedir</div>
+  <div id="gateerr"></div>
+  <button id="gateskip">jogar sem gravar</button>
 </div>
 
 <div class="full" id="loop">
   <video id="loopvid" playsinline muted loop autoplay></video>
   <div id="loopcap">e essa foi a sua cara 🥹</div>
   <div class="saves">
-    <a id="saveFull" download="pedido-completo">⬇ vídeo completo</a>
-    <a id="saveReac" download="reacao">⬇ só a reação</a>
-    <a id="saveIG" download="pedido-instagram-30s">⬇ Instagram (30s)</a>
+    <a id="saveFull" download="pedido-completo">⬇ salvar vídeo completo</a>
+    <a id="saveReac" download="reacao">⬇ salvar só a reação</a>
+    <a id="saveIG" download="pedido-instagram-30s">⬇ salvar Instagram (30s)</a>
   </div>
 </div>
 
@@ -147,6 +156,7 @@ const CONFIG = {
   rev1: "não é o número do jogo.",
   rev2: "são os dias desde 24 de junho — o dia em que te conheci.",
   rev3: "cinco meses exatos, hoje. contei todos.",
+  rev3outroDia: "contei todos.",   // usado se não for exatamente 5 meses (24/11)
   cue:  "(pode levantar o olho agora)",
   chaosMs: 2800,             // tempo de caos ilegível antes de travar
   lockStep: 230,             // intervalo entre cada quadrado travar em verde
@@ -166,8 +176,8 @@ const keyState = {};
 
 function sizeTiles(cols, rows){
   const w = Math.min(window.innerWidth, 520) - 40;
-  const h = window.innerHeight - 365;
-  const t = Math.floor(Math.max(34, Math.min(62, (w - (cols-1)*6)/cols, (h - (rows-1)*6)/rows)));
+  const h = window.innerHeight - (window.innerHeight < 620 ? 330 : 365);
+  const t = Math.floor(Math.max(26, Math.min(62, (w - (cols-1)*6)/cols, (h - (rows-1)*6)/rows)));
   board.style.setProperty("--t", t+"px");
 }
 function buildBoard(){
@@ -213,7 +223,7 @@ function timeUp(){
 }
 function press(k){
   if(done || busy) return;
-  startTimer();
+  startTimer(); if(!wl) keepAwake();
   if(k==="ENTER") return submit();
   if(k==="BACK"){ if(col>0){ col--; const t=grid[row][col]; t.textContent=""; t.classList.remove("filled"); } return; }
   if(/^[A-Z]$/.test(k) && col<N){ const t=grid[row][col]; t.textContent=k; t.classList.add("filled"); col++; }
@@ -247,7 +257,7 @@ function submit(){
       setTimeout(()=>showStats(true), 2200);
     } else if(row===ROWS-1){
       done = true; stopTimer(); toast(WORD, 2500); setTimeout(()=>showStats(false), 2600);
-    } else { row++; col=0; }
+    } else { row++; col=0; if(left <= 0 && timerIv) timeUp(); }
   }, end);
 }
 function showStats(win){
@@ -275,10 +285,14 @@ function daysSince(iso){
   const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.max(0, Math.round((today - start)/86400000));
 }
-const DAYS = daysSince(CONFIG.metISO);
+let DAYS = daysSince(CONFIG.metISO);
 $("num").textContent = DAYS;
 
 function showNumber(){
+  DAYS = daysSince(CONFIG.metISO);   // caso a página tenha sido aberta no dia anterior
+  const p = CONFIG.metISO.split("-").map(Number), now = new Date();
+  const mesesExatos = now.getDate() === p[2] && ((now.getFullYear()-p[0])*12 + now.getMonth()-(p[1]-1)) === 5;
+  if(!mesesExatos) CONFIG.rev3 = CONFIG.rev3outroDia;
   $("stats").classList.remove("on");
   startClipB();                 // começa a gravar a reação a partir daqui
   const cEl = $("count");
@@ -365,15 +379,19 @@ function endCue(){
 // recI = INSTAGRAM 9:16, 30s: rosto em cima + tela embaixo, da revelação do número em diante.
 let camStream=null, camVid=null, recB=null, recC=null, recI=null, chunksB=[], chunksC=[], chunksI=[], recType="video/webm", drawing=false;
 function pickMime(){
-  const c=["video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+  const c=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
   if(window.MediaRecorder && MediaRecorder.isTypeSupported)
     for(const m of c){ if(MediaRecorder.isTypeSupported(m)) return m; }
   return "";
 }
 const EXT = () => recType.includes("mp4") ? "mp4" : "webm";
-function newRec(stream, chunks){
-  const m = pickMime();
-  const r = new MediaRecorder(stream, m ? { mimeType:m } : undefined);
+let recErr = "";
+function newRec(stream, chunks, vbps=2500000){
+  const m = pickMime(), opt = { videoBitsPerSecond:vbps, audioBitsPerSecond:128000 };
+  if(m) opt.mimeType = m;
+  let r;
+  try{ r = new MediaRecorder(stream, opt); }
+  catch(e){ r = new MediaRecorder(stream, m ? { mimeType:m } : undefined); } // alguns aparelhos recusam bitrate
   recType = r.mimeType || m || "video/webm";
   r.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
   r.start(); // sem fatias: no iPhone, gravar em pedaços gera MP4 sem duração (vira "ao vivo")
@@ -384,12 +402,12 @@ async function startCamera(){
   const v = { facingMode:"user", width:{ideal:720}, height:{ideal:960} };
   try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v, audio:true }); }
   catch(e){ // microfone negado? grava pelo menos o vídeo
-    try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v }); }catch(e2){ camStream = null; return false; }
+    try{ camStream = await navigator.mediaDevices.getUserMedia({ video:v }); }catch(e2){ camStream = null; recErr = e2.name + ": " + e2.message; return false; }
   }
   camVid = document.createElement("video");
   camVid.muted = true; camVid.playsInline = true; camVid.setAttribute("playsinline","");
   camVid.srcObject = camStream;
-  camVid.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none";
+  camVid.style.cssText = "position:fixed;left:0;top:0;width:4px;height:4px;opacity:.02;pointer-events:none";
   document.body.appendChild(camVid);
   try{ await camVid.play(); }catch(e){}
   startComposite();
@@ -400,31 +418,33 @@ async function startCamera(){
 const LW = 1280, LH = 720, LHALF = 640;           // completo: lado a lado
 const IW = 720, IH = 1280, IFACE = 560;           // instagram: rosto em cima (560), tela embaixo (720)
 const IG_MS = 30000;
+let extraTracks = [];
 let cxL = null, cxI = null, ops = [], bodyBg = "#121214", lastPaint = 0;
 function mkCanvas(w,h){ const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
-function canvasRec(cv, chunks){
+function canvasRec(cv, chunks, vbps){
   try{
     const out = cv.captureStream(30);
-    camStream.getAudioTracks().forEach(t => out.addTrack(t));
-    return newRec(out, chunks);
-  }catch(e){ return null; }
+    camStream.getAudioTracks().forEach(t => { const c = t.clone(); extraTracks.push(c); out.addTrack(c); });
+    return newRec(out, chunks, vbps);
+  }catch(e){ recErr = e.name + ": " + e.message; return null; }
 }
 function startComposite(){
   const cv = mkCanvas(LW, LH);
   if(!cv.captureStream){ try{ recC = newRec(camStream, chunksC); }catch(e){} return; } // sem canvas: só câmera
   cxL = cv.getContext("2d");
+  try{ snapshot(); paintL(); }catch(e){}   // primeiro frame já desenhado (evita início preto)
   drawing = true; requestAnimationFrame(frame);
   recC = canvasRec(cv, chunksC);
   if(!recC){ try{ recC = newRec(camStream, chunksC); }catch(e){} }
 }
 function startClipB(){ // chamado quando o número aparece
   if(!camStream || !window.MediaRecorder) return;
-  try{ recB = newRec(camStream, chunksB); }catch(e){ recB = null; }
+  try{ recB = newRec(camStream, chunksB, 3000000); }catch(e){ recB = null; recErr = e.name; }
   if(drawing){
     const cv = mkCanvas(IW, IH);
     cxI = cv.getContext("2d");
     snapshot(); paintI();
-    recI = canvasRec(cv, chunksI);
+    recI = canvasRec(cv, chunksI, 3000000);
     setTimeout(()=>{ if(recI && recI.state !== "inactive") try{ recI.stop(); }catch(e){} }, IG_MS);
   }
 }
@@ -552,35 +572,60 @@ function drawText(c, o){
 }
 
 function stopAll(cb){
-  let pending = 0;
-  const fin = () => {
-    if(--pending > 0) return;
+  let pending = 0, called = false;
+  const finish = () => {
+    if(called) return; called = true;
     drawing = false;
-    if(camStream) try{ camStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    try{ camStream && camStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    extraTracks.forEach(t => { try{ t.stop(); }catch(e){} });
     cb();
   };
-  [recB, recC, recI].forEach(r => { if(r && r.state !== "inactive"){ pending++; r.onstop = fin; try{ r.stop(); }catch(e){ pending--; } } });
-  if(pending === 0){ pending = 1; fin(); }
+  const fin = () => { if(--pending <= 0) finish(); };
+  [recB, recC, recI].forEach(r => {
+    if(r && r.state !== "inactive"){ pending++; r.onstop = fin; r.onerror = fin; try{ r.stop(); }catch(e){ fin(); } }
+  });
+  if(pending === 0) finish();
+  setTimeout(finish, 5000);   // se algum gravador travar, a tela final aparece mesmo assim
 }
-function setSave(id, chunks, name){
+function setSave(id, chunks, name, rec){
   if(!chunks.length) return null;
-  const url = URL.createObjectURL(new Blob(chunks, { type:recType }));
-  const a = $(id); a.href = url; a.download = name + "." + EXT(); a.style.display = "inline-flex";
+  const type = (rec && rec.mimeType) || recType || "video/mp4";
+  const blob = new Blob(chunks, { type });
+  const fname = name + (type.includes("mp4") ? ".mp4" : ".webm");
+  const url = URL.createObjectURL(blob);
+  const a = $(id); a.href = url; a.download = fname; a.style.display = "inline-flex";
+  // iPhone: abre a folha de compartilhar ("Salvar vídeo" vai pro app Fotos / Instagram). Sem suporte: download normal.
+  let file = null; try{ file = new File([blob], fname, { type }); }catch(e){}
+  a.onclick = ev => {
+    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+      ev.preventDefault();
+      navigator.share({ files:[file] }).catch(()=>{});
+    }
+  };
   return url;
 }
 function showLoop(){
   if(!chunksB.length && !chunksC.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
-  const reac = setSave("saveReac", chunksB, "reacao");
-  setSave("saveFull", chunksC, "pedido-completo");
-  setSave("saveIG", chunksI, "pedido-instagram-30s");
+  const reac = setSave("saveReac", chunksB, "reacao", recB);
+  setSave("saveFull", chunksC, "pedido-completo", recC);
+  setSave("saveIG", chunksI, "pedido-instagram-30s", recI);
   if(reac){ const v = $("loopvid"); v.src = reac; v.play().catch(()=>{}); }
   $("loop").classList.add("on");
 }
 
+// ====================== TELA SEMPRE ACESA ======================
+let wl = null;
+async function keepAwake(){
+  try{ if("wakeLock" in navigator && !wl && document.visibilityState === "visible"){ wl = await navigator.wakeLock.request("screen"); wl.addEventListener("release", ()=>{ wl = null; }); } }catch(e){}
+}
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible"){ keepAwake(); if(camVid) camVid.play().catch(()=>{}); }
+});
+
 // ====================== EVENTOS / INÍCIO ======================
 kb.addEventListener("click", e=>{ const b=e.target.closest("[data-k]"); if(b){ press(b.dataset.k); b.blur(); } });
 document.addEventListener("keydown", e=>{
-  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.ctrlKey||e.metaKey||e.altKey||e.repeat) return;
   if(e.key==="Enter"){ e.preventDefault(); press("ENTER"); }
   else if(e.key==="Backspace") press("BACK");
   else { const k = norm(e.key); if(/^[A-Z]$/.test(k)) press(k); }
@@ -593,13 +638,36 @@ const TESTE = location.search.includes("teste") || location.hash==="#teste";
 const ENSAIO = location.search.includes("ensaio");
 if(TESTE){ done = true; showStats(true); }
 else {
-  // portão: ELE toca "começar", libera a câmera, e só então entrega o celular
+  // portão: ELE toca "jogar", libera câmera + microfone, confere que está gravando, e só então entrega o celular
   $("gate").classList.add("on");
-  $("gatebtn").addEventListener("click", async ()=>{
-    await startCamera();
+  let starting = false;
+  const begin = () => {
     $("gate").classList.remove("on");
+    keepAwake();
+    try{ history.pushState(null, "", location.href); addEventListener("popstate", ()=>history.pushState(null, "", location.href)); }catch(e){}
     if(ENSAIO){ done = true; showStats(true); } // ?ensaio = testa a gravação pulando o jogo
+  };
+  $("gatebtn").addEventListener("click", async ()=>{
+    if(starting) return; starting = true;
+    keepAwake();
+    let ok = false;
+    try{ ok = await startCamera(); }catch(e){ recErr = e.name + ": " + e.message; }
+    const gravando = ok && recC && recC.state === "recording";
+    if(gravando || !CONFIG.gravar){
+      if(gravando && !camStream.getAudioTracks().length){
+        $("gateerr").textContent = "⚠ gravando SEM som (microfone bloqueado). toque em jogar pra seguir assim.";
+        $("gateerr").style.display = "block"; $("gatebtn").onclick = begin; return;
+      }
+      return begin();
+    }
+    $("gateerr").textContent = "⚠ a gravação não iniciou" + (recErr ? " (" + recErr + ")" : "") +
+      ". Confira em Ajustes › Safari › Câmera e Microfone = Permitir, recarregue a página e tente de novo.";
+    $("gateerr").style.display = "block";
+    $("gateskip").style.display = "inline-block";
+    $("gatebtn").textContent = "↻ tentar de novo";
+    $("gatebtn").onclick = () => location.reload();
   }, { once:true });
+  $("gateskip").addEventListener("click", begin);
 }
 }
 </script>
