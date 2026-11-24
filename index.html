@@ -481,7 +481,7 @@ async function startCamera(){
   }
   // tenta 1080p a 60 fps de verdade (se o aparelho recusar, segue com o que já tem)
   const vt = camStream.getVideoTracks()[0];
-  try{ if(vt) await vt.applyConstraints({ width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30, max:30} }); }catch(e){ console.log("applyConstraints:", e.name); }
+  // (sem applyConstraints: no Safari ele reinicia a câmera e dá um engasgo)
   try{ vt && console.log("câmera:", JSON.stringify(vt.getSettings())); }catch(e){}
   camVid = document.createElement("video");
   camVid.muted = true; camVid.playsInline = true; camVid.setAttribute("playsinline","");
