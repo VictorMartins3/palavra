@@ -600,6 +600,23 @@ function paintI(c, smp, st){
 }
 // ---------- DEPOIS: monta os vídeos a partir do arquivo da câmera (mediabunny, vendorizado em lib/) ----------
 let mbP = null;
+// espera a página estar na frente (o iOS derruba o decodificador/codificador de vídeo de páginas em segundo plano)
+async function visivel(){ while(document.hidden) await sleep(500); }
+// o Safari grava "nível 1.0" (resolução minúscula) no cabeçalho H.264; corrige pro decodificador não recusar 1080p
+if(window.VideoDecoder){
+  const fixCfg = c => {
+    if(!c || !/^avc[13]\.[0-9a-f]{6}$/i.test(c.codec || "")) return c;
+    const lvl = parseInt(c.codec.slice(-2), 16);
+    if(lvl >= 0x28) return c;
+    const n = Object.assign({}, c, { codec: c.codec.slice(0, -2) + "28" });
+    try{ if(c.description){ const b = new Uint8Array(c.description instanceof ArrayBuffer ? c.description.slice(0) : c.description.buffer.slice(c.description.byteOffset, c.description.byteOffset + c.description.byteLength)); if(b.length > 3) b[3] = 0x28; n.description = b; } }catch(e){}
+    return n;
+  };
+  const cfgOrig = VideoDecoder.prototype.configure;
+  VideoDecoder.prototype.configure = function(c){ return cfgOrig.call(this, fixCfg(c)); };
+  const supOrig = VideoDecoder.isConfigSupported && VideoDecoder.isConfigSupported.bind(VideoDecoder);
+  if(supOrig) VideoDecoder.isConfigSupported = c => supOrig(fixCfg(c));
+}
 const loadMB = () => mbP || (mbP = import("./lib/mediabunny-1.65.2.min.mjs").catch(e => { mbP = null; throw e; }));
 // layout: null = só o rosto (câmera pura); "I" = 9:16; "L" = lado a lado. Tempos em segundos do arquivo.
 async function montar(raw, layout, start, end, onProg){
@@ -739,7 +756,7 @@ function idb(){
 }
 async function idbPut(file){
   const job = (async()=>{ const db = await idb(); await new Promise((ok,no)=>{ const t = db.transaction("v","readwrite"); t.objectStore("v").put(file, file.name); t.oncomplete = ok; t.onerror = t.onabort = ()=>no(t.error || new Error("idb")); }); return true; })().catch(()=>false);
-  return Promise.race([job, sleep(20000).then(()=>false)]);
+  return Promise.race([job, sleep(180000).then(()=>false)]);
 }
 async function idbAll(){
   try{ const db = await idb(); return await new Promise((ok,no)=>{ const out = []; const t = db.transaction("v"); const c = t.objectStore("v").openCursor();
@@ -995,6 +1012,8 @@ async function showLoop(){
     const upd = () => { d.textContent = "iOS: " + ((navigator.userAgent.match(/OS (\d+[_\d]*)/)||[])[1]||"?").replace(/_/g,".") + "  · " + (recC && recC.mimeType || "") + "\n" + (DIAG.length ? DIAG.join("\n") : "nenhum problema anotado"); };
     upd(); setInterval(upd, 2000); $("savestatus").after(d); }
   const rows = mont.map(v => { const [b1, b2] = rowEl(v.label); b1.textContent = "na fila…"; v.b1 = b1; v.b2 = b2; return v; });
+  const aviso = document.createElement("div"); aviso.style.cssText = "margin:10px 0;padding:10px 14px;border-radius:10px;background:#3a2a12;color:#f0c27a;font-size:14px;max-width:400px";
+  aviso.textContent = "⚠ deixe esta tela aberta, com o Safari na frente, até todos os vídeos ficarem prontos"; $("saves").before(aviso);
   queueUpload(raw); if(await idbPut(raw)) savedLocal++; status();
   // 2) os outros 4, um de cada vez (cada um: monta → salva → envia), liberando a memória entre eles
   const corte = { B:[rv, 0], I:[rv, rv + IG_MS/1000], F:[0, 0], C:[0, 0] };
@@ -1007,8 +1026,16 @@ async function showLoop(){
     try{
       prog(0); await sleep(30);
       let buf;
-      try{ buf = await montar(raw, lay[v.key], s, fim, prog); }
-      catch(err){ if(v.key !== "B") throw err; console.warn("rosto: recodificar falhou, copiando", err); buf = await montar(raw, "copy", s, 0, prog); }
+      for(let tent = 1; ; tent++){
+        await visivel();
+        try{ buf = await montar(raw, lay[v.key], s, fim, prog); break; }
+        catch(err){
+          diag("montagem " + v.label + " tentativa " + tent + ": " + (err && err.message));
+          if(tent < 3){ v.b1.textContent = document.hidden ? "volte pra esta tela…" : "tentando de novo…"; await sleep(1500); continue; }
+          if(v.key !== "B") throw err;
+          buf = await montar(raw, "copy", s, 0, prog); break;   // rosto: último recurso = corte sem recomprimir
+        }
+      }
       v.file = new File([buf], v.name + ".mp4", { type:"video/mp4" }); buf = null;
       v.rec = { _t0: recT0 + s*1000, _t1: recT0 + (fim || durS)*1000 };   // pro mixador de música (se ligado)
       const url = shareBtn(v.b1, v.file, CONFIG.musica.versoes ? "⬇ sem música" : "⬇ salvar");
@@ -1023,6 +1050,7 @@ async function showLoop(){
     }
     status();
   }
+  aviso.textContent = "✓ vídeos prontos. Se o Drive ainda estiver enviando, deixe a tela aberta mais um pouco."; aviso.style.background = "#14301f"; aviso.style.color = "#8fd6a8";
   if(!CONFIG.musica.versoes) return;
   for(const v of done2){
     if(v.file.size > 600*1024*1024){ v.b2.textContent = "🎵 grande demais"; savedTotal--; status(); continue; }   // evita estourar a memória do ffmpeg
