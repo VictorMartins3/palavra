@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Palavra do Dia</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -85,6 +85,13 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 #gateskip{display:none;margin-top:14px;font-size:13px;color:var(--muted);background:none;border:0;text-decoration:underline;cursor:pointer}
 #loopvid{width:100%;max-width:360px;aspect-ratio:3/4;object-fit:cover;border-radius:16px;background:#000;transform:scaleX(-1)}
 #loopcap{font:italic 400 clamp(18px,5vw,24px)/1.3 "Fraunces",serif;margin:18px 0 20px}
+#loop{justify-content:flex-start;overflow-y:auto;padding-top:max(20px,env(safe-area-inset-top))}
+#loopvid{max-height:38vh;width:auto;max-width:100%}
+#saves{display:grid;gap:8px;width:100%;max-width:400px}
+.vrow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;text-align:left;font-size:13px;color:var(--muted)}
+.vbtn{font:600 13px "Mitr",sans-serif;text-decoration:none;border:1px solid var(--tile);color:var(--ink);border-radius:999px;padding:10px 12px;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
+.vbtn.wait{opacity:.45;pointer-events:none}
+#savestatus{margin-top:14px;font-size:12px;color:var(--muted);max-width:400px;min-height:1.4em}
 .saves{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .saves a{display:none;font:600 14px "Mitr",sans-serif;text-decoration:none;border:1px solid var(--tile);color:var(--ink);border-radius:999px;padding:11px 20px;min-height:44px;display:none;align-items:center}
 @media (prefers-reduced-motion:reduce){.tile.flip,.tile.dance{animation:none}#count,.rline{transition:opacity .4s}}
@@ -133,11 +140,8 @@ h1{margin:0;font-weight:600;font-size:30px;letter-spacing:.04em}
 <div class="full" id="loop">
   <video id="loopvid" playsinline muted loop autoplay></video>
   <div id="loopcap">e essa foi a sua cara 🥹</div>
-  <div class="saves">
-    <a id="saveFull" download="pedido-completo">⬇ salvar vídeo completo</a>
-    <a id="saveReac" download="reacao">⬇ salvar só a reação</a>
-    <a id="saveIG" download="pedido-instagram-30s">⬇ salvar Instagram (30s)</a>
-  </div>
+  <div id="saves"></div>
+  <div id="savestatus"></div>
 </div>
 
 <script>
@@ -161,6 +165,16 @@ const CONFIG = {
   chaosMs: 2800,             // tempo de caos ilegível antes de travar
   lockStep: 230,             // intervalo entre cada quadrado travar em verde
   loopDelay: 9000,           // espera depois do pedido antes de mostrar o loop
+  musica: {
+    arquivo: "m.m4a",        // trecho de "Lady (Hear Me Tonight)" — Modjo, do segundo 70 ao 125 da faixa
+    inicioArquivo: 70,       // o arquivo começa nesse segundo da música
+    entraEm: 73.7,           // vídeos completos: instrumental entra aqui (~quando aparecem as estatísticas)
+    noNumero: 89.3,          // segundo da música no instante em que o número aparece
+                             // => "I feel love for the first time" quando as letras travam,
+                             //    "I can tell by the look in your eyes" quando aparece "(pode levantar o olho agora)"
+    volume: 0.5
+  },
+  drive: "",                 // URL do Google Apps Script (/exec) pra mandar os vídeos pro Drive. Vazio = não envia.
   gravar: true               // true = tenta gravar a câmera (só em HTTPS/GitHub Pages)
 };
 // ?teste no fim do link pula direto pra contagem (sem câmera), pra testar.
@@ -294,6 +308,7 @@ function showNumber(){
   const mesesExatos = now.getDate() === p[2] && ((now.getFullYear()-p[0])*12 + now.getMonth()-(p[1]-1)) === 5;
   if(!mesesExatos) CONFIG.rev3 = CONFIG.rev3outroDia;
   $("stats").classList.remove("on");
+  tReveal = performance.now();
   startClipB();                 // começa a gravar a reação a partir daqui
   const cEl = $("count");
   $("reveal").classList.add("on");
@@ -377,6 +392,7 @@ function endCue(){
 // recC = vídeo COMPLETO (do "começar" até o fim do pedido): tela à esquerda + rosto à direita, com áudio.
 // recB = só a REAÇÃO: câmera pura, da revelação do número até o fim (vira o loop).
 // recI = INSTAGRAM 9:16, 30s: rosto em cima + tela embaixo, da revelação do número em diante.
+let tReveal = 0, recF=null, chunksF=[];
 let camStream=null, camVid=null, recB=null, recC=null, recI=null, chunksB=[], chunksC=[], chunksI=[], recType="video/webm", drawing=false;
 function pickMime(){
   const c=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
@@ -394,6 +410,7 @@ function newRec(stream, chunks, vbps=2500000){
   catch(e){ r = new MediaRecorder(stream, m ? { mimeType:m } : undefined); } // alguns aparelhos recusam bitrate
   recType = r.mimeType || m || "video/webm";
   r.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+  r._t0 = performance.now(); r.addEventListener("stop", ()=>{ r._t1 = performance.now(); });
   r.start(); // sem fatias: no iPhone, gravar em pedaços gera MP4 sem duração (vira "ao vivo")
   return r;
 }
@@ -433,18 +450,18 @@ function startComposite(){
   if(!cv.captureStream){ try{ recC = newRec(camStream, chunksC); }catch(e){} return; } // sem canvas: só câmera
   cxL = cv.getContext("2d");
   try{ snapshot(); paintL(); }catch(e){}   // primeiro frame já desenhado (evita início preto)
+  const cvI = mkCanvas(IW, IH); cxI = cvI.getContext("2d");
+  try{ paintI(); }catch(e){}
   drawing = true; requestAnimationFrame(frame);
   recC = canvasRec(cv, chunksC);
+  recF = canvasRec(cvI, chunksF, 3000000);   // completo em formato Instagram (9:16)
   if(!recC){ try{ recC = newRec(camStream, chunksC); }catch(e){} }
 }
 function startClipB(){ // chamado quando o número aparece
   if(!camStream || !window.MediaRecorder) return;
   try{ recB = newRec(camStream, chunksB, 3000000); }catch(e){ recB = null; recErr = e.name; }
-  if(drawing){
-    const cv = mkCanvas(IW, IH);
-    cxI = cv.getContext("2d");
-    snapshot(); paintI();
-    recI = canvasRec(cv, chunksI, 3000000);
+  if(drawing && cxI){
+    recI = canvasRec(cxI.canvas, chunksI, 3000000);
     setTimeout(()=>{ if(recI && recI.state !== "inactive") try{ recI.stop(); }catch(e){} }, IG_MS);
   }
 }
@@ -455,7 +472,7 @@ function frame(ts){
     try{
       snapshot();
       paintL();
-      if(cxI && recI && recI.state === "recording") paintI();
+      if(cxI) paintI();
     }catch(e){}
   }
   requestAnimationFrame(frame);
@@ -581,36 +598,182 @@ function stopAll(cb){
     cb();
   };
   const fin = () => { if(--pending <= 0) finish(); };
-  [recB, recC, recI].forEach(r => {
+  [recB, recC, recI, recF].forEach(r => {
     if(r && r.state !== "inactive"){ pending++; r.onstop = fin; r.onerror = fin; try{ r.stop(); }catch(e){ fin(); } }
   });
   if(pending === 0) finish();
   setTimeout(finish, 5000);   // se algum gravador travar, a tela final aparece mesmo assim
 }
-function setSave(id, chunks, name, rec){
-  if(!chunks.length) return null;
-  const type = (rec && rec.mimeType) || recType || "video/mp4";
-  const blob = new Blob(chunks, { type });
-  const fname = name + (type.includes("mp4") ? ".mp4" : ".webm");
-  const url = URL.createObjectURL(blob);
-  const a = $(id); a.href = url; a.download = fname; a.style.display = "inline-flex";
-  // iPhone: abre a folha de compartilhar ("Salvar vídeo" vai pro app Fotos / Instagram). Sem suporte: download normal.
-  let file = null; try{ file = new File([blob], fname, { type }); }catch(e){}
-  a.onclick = ev => {
-    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
-      ev.preventDefault();
-      navigator.share({ files:[file] }).catch(()=>{});
+// ====================== SALVAR: celular (IndexedDB) + Google Drive + versões com música ======================
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const VIDS = [ // ordem = ordem de envio pro Drive (menores primeiro)
+  { key:"B", label:"Só a reação",            name:"reacao",                    chunks:()=>chunksB, rec:()=>recB },
+  { key:"I", label:"Instagram 30s",           name:"pedido-instagram-30s",      chunks:()=>chunksI, rec:()=>recI },
+  { key:"F", label:"Completo · Instagram",    name:"pedido-completo-instagram", chunks:()=>chunksF, rec:()=>recF },
+  { key:"C", label:"Completo (lado a lado)",  name:"pedido-completo",           chunks:()=>chunksC, rec:()=>recC },
+];
+
+// ---------- IndexedDB: guarda cada vídeo no próprio celular assim que fica pronto ----------
+function idb(){
+  return new Promise((ok, no) => {
+    const q = indexedDB.open("pedido-videos", 1);
+    q.onupgradeneeded = () => q.result.createObjectStore("v");
+    q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error);
+  });
+}
+async function idbPut(file){
+  try{ const db = await idb(); await new Promise((ok,no)=>{ const t = db.transaction("v","readwrite"); t.objectStore("v").put(file, file.name); t.oncomplete = ok; t.onerror = ()=>no(t.error); }); return true; }
+  catch(e){ return false; }
+}
+async function idbAll(){
+  try{ const db = await idb(); return await new Promise((ok,no)=>{ const out = []; const t = db.transaction("v"); const c = t.objectStore("v").openCursor();
+    c.onsuccess = () => { const k = c.result; if(k){ out.push(k.value); k.continue(); } else ok(out); }; c.onerror = ()=>no(c.error); }); }
+  catch(e){ return []; }
+}
+
+// ---------- Google Drive (via Google Apps Script do próprio usuário; ver CONFIG.drive) ----------
+function blobToB64(b){ return new Promise((ok,no)=>{ const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => no(r.error); r.readAsDataURL(b); }); }
+async function drivePost(obj){
+  const r = await fetch(CONFIG.drive, { method:"POST", body: JSON.stringify(obj) }); // text/plain: sem preflight CORS
+  const j = await r.json(); if(!j.ok) throw new Error(j.error || "drive"); return j;
+}
+async function driveUpload(file, onProg){
+  const s = await drivePost({ a:"start", name:file.name, mime:file.type || "video/mp4", size:file.size });
+  const CH = 8*1024*1024; let off = 0;
+  while(off < file.size){
+    const end = Math.min(off + CH, file.size), data = await blobToB64(file.slice(off, end));
+    for(let tries = 1; ; tries++){
+      try{ await drivePost({ a:"chunk", url:s.url, start:off, end:end-1, total:file.size, data }); break; }
+      catch(e){ if(tries >= 5) throw e; await sleep(2500*tries); }
+    }
+    off = end; onProg && onProg(off / file.size);
+  }
+}
+const upQueue = []; let upBusy = false, upDone = 0, upFail = 0, upCur = "";
+function queueUpload(file){
+  if(!CONFIG.drive) return;
+  upQueue.push(file); pumpUploads();
+}
+async function pumpUploads(){
+  if(upBusy) return; upBusy = true;
+  while(upQueue.length){
+    const f = upQueue.shift();
+    let ok = false;
+    for(let round = 1; round <= 3 && !ok; round++){
+      try{ await driveUpload(f, p => { upCur = f.name + " " + Math.round(p*100) + "%"; status(); }); ok = true; }
+      catch(e){ upCur = f.name + " — erro, tentando de novo…"; status(); await sleep(5000*round); }
+    }
+    ok ? upDone++ : upFail++; upCur = ""; status();
+  }
+  upBusy = false; status();
+}
+
+// ---------- música (ffmpeg.wasm: junta o áudio sem regravar a imagem) ----------
+let ffCore = null;
+async function loadFF(){
+  if(ffCore) return ffCore;
+  await new Promise((ok,no)=>{ const s = document.createElement("script"); s.src = "ff/ffmpeg-core.js"; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+  ffCore = await createFFmpegCore({ locateFile: p => "ff/" + p });
+  const mus = new Uint8Array(await (await fetch(CONFIG.musica.arquivo)).arrayBuffer());
+  ffCore.FS.writeFile("musica.m4a", mus);
+  return ffCore;
+}
+async function addMusic(v){
+  const M = CONFIG.musica, core = await loadFF();
+  const r = v.rec, ext = v.file.name.split(".").pop(), inN = "in." + ext, outN = "out." + ext;
+  const dur = Math.max(1, ((r && r._t1 || performance.now()) - (r && r._t0 || 0)) / 1000);
+  // em que segundo do vídeo a música deve começar (pode ser antes do vídeo começar)
+  const dv = (tReveal - (r && r._t0 || tReveal)) / 1000 - (M.noNumero - M.entraEm);
+  let P, D, FI;
+  if(dv >= 0){ P = M.entraEm - M.inicioArquivo; D = Math.round(dv*1000); FI = 3; }   // vídeo completo: entra no instrumental
+  else       { P = M.entraEm - M.inicioArquivo - dv; D = 0; FI = 1.5; }              // clipes curtos: já começa no ponto certo
+  const OUT = Math.max(0, dur - 2.5).toFixed(2);
+  const mus = `[1:a]atrim=start=${P.toFixed(2)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${FI},volume=${M.volume},adelay=${D}|${D}`;
+  const temVoz = !!(camStream && camStream.getAudioTracks().length);
+  const fc = temVoz
+    ? `${mus}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,afade=t=out:st=${OUT}:d=2.5[a]`
+    : `${mus},apad,afade=t=out:st=${OUT}:d=2.5[a]`;
+  core.FS.writeFile(inN, new Uint8Array(await v.file.arrayBuffer()));
+  const args = ["-i", inN, "-i", "musica.m4a", "-filter_complex", fc, "-map", "0:v", "-map", "[a]", "-c:v", "copy"];
+  if(ext === "mp4") args.push("-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart");
+  else args.push("-c:a", "libopus", "-b:a", "128k");
+  if(!temVoz) args.push("-t", dur.toFixed(2));
+  args.push(outN);
+  const ret = core.exec(...args);
+  let data = null; try{ data = core.FS.readFile(outN); }catch(e){}
+  try{ core.FS.unlink(inN); }catch(e){} try{ core.FS.unlink(outN); }catch(e){}
+  try{ core.reset(); }catch(e){}
+  if(ret !== 0 || !data || data.length < 1000) throw new Error("ffmpeg " + ret);
+  return new File([data], v.name + "-com-musica." + ext, { type: v.file.type });
+}
+
+// ---------- tela final ----------
+let savedLocal = 0, savedTotal = 0;
+function status(){
+  const parts = [];
+  if(savedTotal) parts.push((savedLocal === savedTotal ? "✓" : "…") + " salvos no celular: " + savedLocal + "/" + savedTotal);
+  if(CONFIG.drive) parts.push("☁️ Drive: " + upDone + " enviados" + (upFail ? ", " + upFail + " falharam" : "") + (upCur ? " · " + upCur : (upQueue.length || upBusy ? "" : " ✓")));
+  $("savestatus").textContent = parts.join("   ·   ");
+}
+function shareBtn(btn, file, label){
+  const url = URL.createObjectURL(file);
+  btn.textContent = label; btn.href = url; btn.download = file.name; btn.classList.remove("wait");
+  btn.onclick = ev => {
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      ev.preventDefault(); navigator.share({ files:[file] }).catch(()=>{});
     }
   };
   return url;
 }
-function showLoop(){
-  if(!chunksB.length && !chunksC.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
-  const reac = setSave("saveReac", chunksB, "reacao", recB);
-  setSave("saveFull", chunksC, "pedido-completo", recC);
-  setSave("saveIG", chunksI, "pedido-instagram-30s", recI);
-  if(reac){ const v = $("loopvid"); v.src = reac; v.play().catch(()=>{}); }
-  $("loop").classList.add("on");
+function rowEl(label){
+  const row = document.createElement("div"); row.className = "vrow";
+  row.innerHTML = `<span>${label}</span><a class="vbtn wait">…</a><a class="vbtn wait">🎵 preparando…</a>`;
+  $("saves").appendChild(row);
+  return row.querySelectorAll("a");
+}
+async function showLoop(){
+  const vids = [];
+  for(const v of VIDS){
+    const ch = v.chunks(); if(!ch.length) continue;
+    const r = v.rec(), type = (r && r.mimeType) || recType || "video/mp4";
+    v.file = new File([new Blob(ch, { type })], v.name + (type.includes("mp4") ? ".mp4" : ".webm"), { type });
+    v.rec = r; vids.push(v);
+  }
+  if(!vids.length) return; // sem gravação (ex: no artifact): o pedido já foi o fim
+  savedTotal = vids.length * 2;
+  for(const v of vids){
+    const [b1, b2] = rowEl(v.label); v.b2 = b2;
+    const url = shareBtn(b1, v.file, "⬇ sem música");
+    if(v.key === "B"){ const lv = $("loopvid"); lv.src = url; lv.play().catch(()=>{}); }
+  }
+  $("loop").classList.add("on"); status();
+  // 1) guarda tudo no celular, 2) manda pro Drive, 3) gera as versões com música (e guarda/manda também)
+  for(const v of vids){ if(await idbPut(v.file)) savedLocal++; status(); queueUpload(v.file); }
+  for(const v of vids){
+    try{
+      await sleep(50);
+      const fm = await addMusic(v);
+      shareBtn(v.b2, fm, "🎵 com música");
+      if(await idbPut(fm)) savedLocal++; status(); queueUpload(fm);
+    }catch(e){ v.b2.textContent = "🎵 indisponível"; savedTotal--; status(); }
+  }
+}
+
+// ---------- ?videos : recupera os vídeos salvos no celular ----------
+async function showSaved(){
+  $("gate").classList.remove("on");
+  const files = await idbAll();
+  $("loopcap").textContent = files.length ? "vídeos salvos neste celular" : "nenhum vídeo salvo neste celular";
+  $("loopvid").style.display = "none";
+  for(const f of files){
+    const row = document.createElement("div"); row.className = "vrow";
+    row.innerHTML = `<span>${f.name}</span><a class="vbtn"></a><a class="vbtn">☁️ Drive</a>`;
+    $("saves").appendChild(row);
+    const [b1, b2] = row.querySelectorAll("a");
+    shareBtn(b1, f, "⬇ salvar");
+    if(CONFIG.drive) b2.onclick = () => { b2.textContent = "na fila…"; queueUpload(f); }; else b2.style.display = "none";
+  }
+  $("loop").classList.add("on"); status();
 }
 
 // ====================== TELA SEMPRE ACESA ======================
@@ -621,6 +784,17 @@ async function keepAwake(){
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible"){ keepAwake(); if(camVid) camVid.play().catch(()=>{}); }
 });
+
+// ====================== SEM ZOOM (pinça / toque duplo) ======================
+["gesturestart","gesturechange","gestureend"].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive:false }));
+document.addEventListener("touchmove", e => { if(e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive:false });
+let lastTouch = 0;
+document.addEventListener("touchend", e => {
+  const now = Date.now();
+  if(now - lastTouch < 350 && !e.target.closest("a")){ e.preventDefault(); const k = e.target.closest("[data-k]"); if(k) press(k.dataset.k); }
+  lastTouch = now;
+}, { passive:false });
+document.addEventListener("dblclick", e => e.preventDefault(), { passive:false });
 
 // ====================== EVENTOS / INÍCIO ======================
 kb.addEventListener("click", e=>{ const b=e.target.closest("[data-k]"); if(b){ press(b.dataset.k); b.blur(); } });
@@ -636,7 +810,8 @@ buildBoard(); buildKb(); initHints();
 
 const TESTE = location.search.includes("teste") || location.hash==="#teste";
 const ENSAIO = location.search.includes("ensaio");
-if(TESTE){ done = true; showStats(true); }
+if(location.search.includes("videos")){ done = true; showSaved(); }
+else if(TESTE){ done = true; showStats(true); }
 else {
   // portão: ELE toca "jogar", libera câmera + microfone, confere que está gravando, e só então entrega o celular
   $("gate").classList.add("on");
@@ -649,6 +824,7 @@ else {
   };
   $("gatebtn").addEventListener("click", async ()=>{
     if(starting) return; starting = true;
+    fetch("ff/ffmpeg-core.wasm").then(r=>r.blob()).catch(()=>{});   // pré-carrega o mixador de música
     keepAwake();
     let ok = false;
     try{ ok = await startCamera(); }catch(e){ recErr = e.name + ": " + e.message; }
